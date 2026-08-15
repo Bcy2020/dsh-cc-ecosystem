@@ -48,7 +48,7 @@ export const Config = z.object({
    * models (sonnet/opus/…), which this deployment cannot resolve; without an
    * alias the declared model is ignored (default model) with a warning.
    */
-  modelAliases: z.record(z.string()).default({}),
+  modelAliases: z.dict(z.string()).default({}),
 })
 
 /** The `{kind:'plugin'}` source stamped on every context this adapter injects. */
