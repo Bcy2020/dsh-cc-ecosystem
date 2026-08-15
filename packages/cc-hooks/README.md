@@ -33,6 +33,29 @@ process-level, read once at load; its own source carries the
   `${CLAUDE_PROJECT_DIR}`(运行期,按会话;默认 session workspace,同时导出
   `CLAUDE_PROJECT_DIR` 环境变量)、`${CLAUDE_PLUGIN_DATA}` 无 DSH 落点(记录)
 
+## ⚠️ Windows 宿主:deny 请用结构化 stdout,别依赖 exit 2
+
+DSH 的 shell 执行器(`dsh-pwsh-local`)以
+`pwsh -NoProfile -NonInteractive -Command <hook command>` 运行 hook,而
+**pwsh 7 的 `-Command` 把任何非零 native 退出码折叠成 1**。协议只有
+`exit 2` 才是 deny → `exit 2` 到达时变成 `exit 1`(非阻断错误)→ **hook
+静默放行**。官方桥 `@deepseek-ai/dsh-hooks-claude-code` 在 Windows 同样受此
+影响(LESSONS 1.21)。
+
+**hook 作者在 Windows 上应使用结构化 stdout JSON 通道**(CC 官方支持,且
+exit 0 不受 pwsh 包装影响):
+
+```js
+process.stdout.write(JSON.stringify({
+  hookSpecificOutput: {
+    hookEventName: 'PreToolUse',          // 必须等于触发事件
+    permissionDecision: 'deny',           // allow / deny / ask
+    permissionDecisionReason: 'blocked',
+  },
+}))
+process.exit(0)
+```
+
 ## 安装
 
 ```sh
