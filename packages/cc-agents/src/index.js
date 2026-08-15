@@ -43,6 +43,12 @@ export const Config = z.object({
   homeDir: z.string(),
   projectAgentRank: z.number().default(150),
   globalAgentRank: z.number().default(160),
+  /**
+   * CC frontmatter model names → DSH model names. CC agents name Claude
+   * models (sonnet/opus/…), which this deployment cannot resolve; without an
+   * alias the declared model is ignored (default model) with a warning.
+   */
+  modelAliases: z.record(z.string()).default({}),
 })
 
 /** The `{kind:'plugin'}` source stamped on every context this adapter injects. */
@@ -233,7 +239,7 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
         parent,
         persona: agent.systemPrompt,
         ...toolFilter !== undefined ? { toolFilter } : {},
-        ...agent.model !== undefined ? { agentOptions: { model: agent.model } } : {},
+        ...resolveModel(config, agent) !== undefined ? { agentOptions: { model: resolveModel(config, agent) } } : {},
         maxDepth: config.maxDepth,
       }
 
@@ -260,12 +266,33 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
       }
 
       const run = await ctx.subagents.start(providerName, { ...request, signal: exec.signal })
-      return settleForegroundRun(run)
+      try {
+        return await settleForegroundRun(run)
+      } catch (error) {
+        ctx.logger.warn(`cc-agents: agent "${agent.name}" run failed: ${String(error)}`)
+        throw error
+      }
     },
   }
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a CC frontmatter `model` name to a DSH model name via the
+ * `modelAliases` config. CC agents name Claude models (sonnet/opus/…), which
+ * a DSH deployment usually cannot resolve; without an alias the declared
+ * model is dropped (default model) with a warning. Never returns a raw CC
+ * model name — passing it to agentOptions would fail the child.
+ */
+function resolveModel(config, agent) {
+  const ccModel = agent.model
+  if (ccModel === undefined) return undefined
+  const alias = config.modelAliases?.[ccModel]
+  if (alias !== undefined && typeof alias === 'string' && alias.length > 0) return alias
+  config.ctx?.logger?.warn?.(`cc-agents: agent "${agent.name}" declares model "${ccModel}" — no modelAliases mapping, using the default model`)
+  return undefined
+}
 
 /** Expand CC tool names to candidate DSH names, collecting drop notes. */
 function expandAll(ccNames) {
