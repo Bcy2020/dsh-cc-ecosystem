@@ -208,8 +208,7 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
       const agent = agents.find((a) => a.name === args.agent)
       if (agent === undefined) {
         const available = agents.filter((a) => a.status !== 'BLOCKED').map((a) => a.name)
-        throw new Error(`cc-agents: unknown agent "${args.agent}" (available: ${available.join(', ') || 'none'})`)
-      }
+        throw new Error(`cc-agents: unknown agent "${args.agent}" (available: ${available.join(', ') || 'none'})`)      }
       if (agent.status === 'BLOCKED') {
         throw new Error(`cc-agents: agent "${args.agent}" is not delegatable (${agent.notes?.join('; ') ?? 'blocked'})`)
       }
