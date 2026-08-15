@@ -185,6 +185,18 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
     async execute(args, exec) {
       const parent = exec.agent
       if (!parent) throw new Error(`${toolName} requires a calling agent (exec.agent was undefined)`)
+      // Raw ctx.tools.register() skips defineTool's arg validation, so enforce
+      // the required string parameters here (a missing prompt must never turn
+      // into the literal text "undefined" inside the child's prompt).
+      if (typeof args?.agent !== 'string' || args.agent.length === 0) {
+        throw new Error(`${toolName}: "agent" (the Claude Code agent name) is required`)
+      }
+      if (typeof args?.description !== 'string' || args.description.length === 0) {
+        throw new Error(`${toolName}: "description" (a short task description) is required`)
+      }
+      if (typeof args?.prompt !== 'string' || args.prompt.length === 0) {
+        throw new Error(`${toolName}: "prompt" (the standalone task for the agent) is required`)
+      }
 
       const { agents, skills } = await catalogFor(parent)
       const agent = agents.find((a) => a.name === args.agent)
@@ -233,13 +245,14 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
       parts.push(args.prompt)
       const prompt = [{ type: 'text', text: parts.join('\n\n') }]
 
+      const model = resolveModel(ctx, config, agent)
       const request = {
         label: `cc:${agent.scope}:${agent.name}`,
         prompt,
         parent,
         persona: agent.systemPrompt,
         ...toolFilter !== undefined ? { toolFilter } : {},
-        ...resolveModel(config, agent) !== undefined ? { agentOptions: { model: resolveModel(config, agent) } } : {},
+        ...model !== undefined ? { agentOptions: { model } } : {},
         maxDepth: config.maxDepth,
       }
 
@@ -285,12 +298,12 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
  * model is dropped (default model) with a warning. Never returns a raw CC
  * model name — passing it to agentOptions would fail the child.
  */
-function resolveModel(config, agent) {
+function resolveModel(ctx, config, agent) {
   const ccModel = agent.model
   if (ccModel === undefined) return undefined
   const alias = config.modelAliases?.[ccModel]
   if (alias !== undefined && typeof alias === 'string' && alias.length > 0) return alias
-  config.ctx?.logger?.warn?.(`cc-agents: agent "${agent.name}" declares model "${ccModel}" — no modelAliases mapping, using the default model`)
+  ctx.logger.warn(`cc-agents: agent "${agent.name}" declares model "${ccModel}" — no modelAliases mapping, using the default model`)
   return undefined
 }
 
