@@ -3,4 +3,5 @@ dist/
 *.log
 .DS_Store
 
-docs/   # internal working docs, never committed
+# internal working docs, never committed
+docs/
