@@ -87,9 +87,15 @@ export function apply(ctx, config = {}) {
   }
 
   // ─── catalog injection (agent/session-start) ──────────────────────────────
+  // Top-level sessions only: subagents (delegated children carry a
+  // parentSession header) get their own system prompt — the CC agent body as
+  // persona — and must NOT receive the parent's catalog reminder. Injecting it
+  // would append a user message after the delegation prompt, which the child
+  // then mistakes for its actual task.
   if (config.injectCatalog !== false) {
     ctx.on('agent/session-start', async ({ agent }) => {
       try {
+        if (agent?.session?.header?.parentSession !== undefined) return
         const { agents } = await catalogFor(agent)
         const delegatable = agents.filter((a) => a.status !== 'BLOCKED')
         if (delegatable.length === 0) return
