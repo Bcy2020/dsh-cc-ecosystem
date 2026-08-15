@@ -230,6 +230,17 @@ test('param rule: exact and wildcard', () => {
   assert.equal(evaluateCall(wild, { tool: 'subagent', args: { isolation: 'worktree' } }, env()).decision, 'deny')
 })
 
+test('PowerShell rules and alias canonicalization', () => {
+  const parsed = rules({ deny: ['PowerShell(Remove-Item *)'] })
+  assert.equal(evaluateCall(parsed, { tool: 'pwsh', args: { command: 'Remove-Item -Recurse -Force .\\sample' } }, env()).decision, 'deny')
+  assert.equal(evaluateCall(parsed, { tool: 'pwsh', args: { command: 'del .\\sample' } }, env()).decision, 'deny')
+  assert.equal(evaluateCall(parsed, { tool: 'pwsh', args: { command: 'rm -rf .\\sample' } }, env()).decision, 'deny')
+  // Bash rules do NOT cover the pwsh tool (CC: Bash and PowerShell are separate tools)
+  const bash = rules({ deny: ['Bash(rm -rf *)'] })
+  assert.equal(evaluateCall(bash, { tool: 'pwsh', args: { command: 'Remove-Item -Recurse -Force .\\sample' } }, env()).decision, 'none')
+  assert.equal(evaluateCall(bash, { tool: 'bash', args: { command: 'rm -rf tmp' } }, env()).decision, 'deny')
+})
+
 test('mcp rules', () => {
   const server = rules({ deny: ['mcp__github'] })
   assert.equal(evaluateCall(server, { tool: 'mcp__github__get_issue', args: {} }, env()).decision, 'deny')

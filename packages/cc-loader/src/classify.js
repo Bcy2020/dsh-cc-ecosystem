@@ -116,11 +116,35 @@ function matchCommandRule(rule, call, env) {
   if (typeof call.args?.command !== 'string') return false
   const subcommands = splitSubcommands(call.args.command)
   const allowMode = rule.bucket === 'allow'
-  const stripped = subcommands.map((s) => stripWrapper(s, { allowEnv: false }))
-  // For allow rules CC requires every subcommand to match; deny/ask match on
-  // any. (Only the evaluator caller decides; here we expose both.)
+  const stripped = subcommands.map((s) => {
+    const w = stripWrapper(s, { allowEnv: false })
+    // CC canonicalizes PowerShell aliases before matching: a rule written for
+    // the cmdlet name (Remove-Item) also matches its aliases (del, rm, ri…).
+    return bucket === 'PowerShell' ? canonicalizePowerShell(w) : w
+  })
   if (allowMode) return stripped.length > 0 && stripped.every((s) => rule.command.test(s))
   return stripped.some((s) => rule.command.test(s))
+}
+
+/** Common PowerShell aliases → cmdlet names (CC canonicalizes these before matching). */
+const PS_ALIASES = new Map([
+  ['ri', 'Remove-Item'], ['rm', 'Remove-Item'], ['del', 'Remove-Item'], ['erase', 'Remove-Item'], ['rd', 'Remove-Item'],
+  ['gci', 'Get-ChildItem'], ['ls', 'Get-ChildItem'], ['dir', 'Get-ChildItem'],
+  ['cat', 'Get-Content'], ['gc', 'Get-Content'], ['type', 'Get-Content'],
+  ['cp', 'Copy-Item'], ['copy', 'Copy-Item'], ['cpi', 'Copy-Item'],
+  ['mv', 'Move-Item'], ['move', 'Move-Item'], ['mi', 'Move-Item'],
+  ['ni', 'New-Item'], ['ii', 'Invoke-Item'], ['gi', 'Get-Item'],
+  ['sl', 'Set-Location'], ['cd', 'Set-Location'], ['chdir', 'Set-Location'],
+  ['pwd', 'Get-Location'], ['gl', 'Get-Location'],
+])
+
+/** Rewrite a PowerShell command's leading alias to its canonical cmdlet name. */
+function canonicalizePowerShell(cmd) {
+  const m = /^(\S+)(\s+.*)?$/.exec(cmd.trim())
+  if (!m) return cmd
+  const canonical = PS_ALIASES.get(m[1].toLowerCase())
+  if (canonical === undefined) return cmd
+  return m[2] !== undefined ? `${canonical}${m[2]}` : canonical
 }
 
 /** Split a compound command on CC-recognized separators, quote-aware. */
