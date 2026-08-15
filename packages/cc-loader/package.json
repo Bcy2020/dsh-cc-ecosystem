@@ -1,0 +1,27 @@
+{
+  "name": "dsh-cc-loader",
+  "version": "0.1.0",
+  "description": "Shared parse layer for the dsh-cc ecosystem: parses Claude Code .claude/ (project + global) into a standalone .dsh intermediate representation (IR), classifying every component DIRECT/ADAPTED/UNSUPPORTED/BLOCKED and filtering unsupported ones out.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "claude-code",
+    "loader",
+    "parser"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "yaml": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

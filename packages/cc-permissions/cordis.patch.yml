@@ -1,0 +1,6 @@
+- insert:
+    - id: cc-permissions
+      name: 'dsh-cc-permissions'
+      config:
+        enabled: true
+        hideDeniedTools: true

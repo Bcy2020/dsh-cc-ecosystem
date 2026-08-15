@@ -1,0 +1,7 @@
+- insert:
+    - id: cc-skills
+      name: 'dsh-cc-skills'
+      config:
+        enableSkills: true
+        enableRules: true
+        enableGlobal: true

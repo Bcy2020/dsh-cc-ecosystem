@@ -1,0 +1,42 @@
+{
+  "name": "dsh-cc-permissions",
+  "version": "0.1.0",
+  "description": "Enforce Claude Code permission rules (.claude/settings.json allow/deny/ask, deny>ask>allow) in DSH via a tools/pre-execute gate. Reads CC settings as a read-only source; DSH-side approvals never write back to .claude.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "src",
+    "README.md",
+    "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "claude-code",
+    "permissions",
+    "security"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "dsh-cc-loader": "file:../cc-loader"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/schemastery": { "optional": true }
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
