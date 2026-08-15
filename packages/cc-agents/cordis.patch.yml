@@ -1,0 +1,7 @@
+- insert:
+    - id: cc-agents
+      name: 'dsh-cc-agents'
+      config:
+        provider: spawn
+        toolName: cc_agent
+        injectCatalog: true

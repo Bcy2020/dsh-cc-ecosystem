@@ -15,6 +15,10 @@ export {
   findProjectRoot, parseFrontmatter, isSkillName, pathExists, readTextSafe,
 } from './skills.js'
 export { discoverSettings, mergeSettings } from './settings.js'
+export {
+  discoverAgents, mergeAgentCatalog, buildAgentEntry, classifyAgentFields,
+  expandCcToolToDsh,
+} from './agents.js'
 export { parseRule } from './parse-rule.js'
 export { compileCommandPattern, compilePathPattern, compileDomainPattern, winPathToPosix, escapeRegExp } from './patterns.js'
 export {

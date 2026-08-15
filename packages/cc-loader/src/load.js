@@ -6,6 +6,7 @@ import { findProjectRoot, collectClaudeDir, discoverRules } from './skills.js'
 import { discoverSettings, mergeSettings } from './settings.js'
 import { parseRulesFor, removedToolNames, classifyComponents } from './classify.js'
 import { STATUS } from './classify.js'
+import { mergeAgentCatalog } from './agents.js'
 
 /**
  * Load Claude Code `.claude/` assets (project + optional global ~/.claude)
@@ -32,6 +33,7 @@ export async function loadClaude(opts = {}) {
   const skills = []
   const commands = []
   const rules = []
+  const agentRoots = []
 
   if (projectRoot !== undefined) {
     const claudeDir = join(projectRoot, '.claude')
@@ -39,6 +41,7 @@ export async function loadClaude(opts = {}) {
     skills.push(...dir.skills)
     commands.push(...dir.commands)
     rules.push(...await discoverRules(join(claudeDir, 'rules'), 'project'))
+    agentRoots.push({ root: join(claudeDir, 'agents'), scope: 'project', rank: projectSkillRank })
   }
 
   if (opts.enableGlobal !== false) {
@@ -48,8 +51,13 @@ export async function loadClaude(opts = {}) {
       skills.push(...dir.skills)
       commands.push(...dir.commands)
       rules.push(...await discoverRules(join(globalDir, 'rules'), 'user'))
+      agentRoots.push({ root: join(globalDir, 'agents'), scope: 'global', rank: globalSkillRank })
     }
   }
+
+  // Agents: merge project + global into one catalog (project wins on name clash).
+  const catalog = await mergeAgentCatalog(agentRoots, warnings)
+  warnings.push(...catalog.warnings)
 
   // Permissions: discover the three settings files and merge.
   const discovered = await discoverSettings(cwd, { homeDir, projectRootMarkers: markers })
@@ -73,6 +81,7 @@ export async function loadClaude(opts = {}) {
     skills: skills.map((s) => ({ ...s, status: s.status ?? STATUS.DIRECT })),
     commands: commands.map((c) => ({ ...c, status: c.status ?? STATUS.DIRECT })),
     rules: rules.map((r) => ({ ...r, status: r.status ?? STATUS.DIRECT })),
+    agents: catalog.agents,
     permissions,
     unsupported: [], // future: workflows/monitors/themes/bin classification lands here
   }

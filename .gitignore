@@ -5,3 +5,4 @@ dist/
 
 # internal working docs, never committed
 docs/
+pnpm-workspace.yaml

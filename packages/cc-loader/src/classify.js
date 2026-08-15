@@ -385,6 +385,7 @@ export function classifyComponents(ir) {
   for (const s of ir.components.skills ?? []) consider(s.status ?? STATUS.DIRECT, 'skill', s.name, s.reason)
   for (const c of ir.components.commands ?? []) consider(c.status ?? STATUS.DIRECT, 'command', c.name, c.reason)
   for (const r of ir.components.rules ?? []) consider(r.status ?? STATUS.DIRECT, 'rule', r.name, r.reason)
+  for (const a of ir.components.agents ?? []) consider(a.status ?? STATUS.DIRECT, 'agent', a.name, a.notes?.join('; ') || undefined)
   const perm = ir.components.permissions
   if (perm !== undefined) {
     if (perm.status === STATUS.DIRECT || perm.status === STATUS.UNSUPPORTED) {
