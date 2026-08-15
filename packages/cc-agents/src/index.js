@@ -121,27 +121,28 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
       ? ' This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.'
       : ''),
     parameters: {
-      agent: {
-        type: 'string',
-        required: true,
-        description: 'The Claude Code agent to delegate to (its name from the injected catalog).',
-      },
-      description: {
-        type: 'string',
-        required: true,
-        description: 'A short (3-5 word) description of the delegated task, for display.',
-      },
-      prompt: {
-        type: 'string',
-        required: true,
-        description: 'The complete, self-contained task for the agent. It does not share this conversation\'s context.',
-      },
-      ...backgroundEnabled ? {
-        run_in_background: {
-          type: 'boolean',
-          description: 'Whether to run as a background job and return its id. Defaults to false; collect with job_output or stop with job_kill.',
+      type: 'object',
+      properties: {
+        agent: {
+          type: 'string',
+          description: 'The Claude Code agent to delegate to (its name from the injected catalog).',
         },
-      } : {},
+        description: {
+          type: 'string',
+          description: 'A short (3-5 word) description of the delegated task, for display.',
+        },
+        prompt: {
+          type: 'string',
+          description: 'The complete, self-contained task for the agent. It does not share this conversation\'s context.',
+        },
+        ...backgroundEnabled ? {
+          run_in_background: {
+            type: 'boolean',
+            description: 'Whether to run as a background job and return its id. Defaults to false; collect with job_output or stop with job_kill.',
+          },
+        } : {},
+      },
+      required: ['agent', 'description', 'prompt'],
     },
     output: {
       schema: {
@@ -149,18 +150,20 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
           {
             type: 'object',
             additionalProperties: false,
+            required: ['kind', 'jobId'],
             properties: {
-              kind: { type: 'string', required: true, const: 'background' },
-              jobId: { type: 'string', required: true },
+              kind: { type: 'string', const: 'background' },
+              jobId: { type: 'string' },
             },
           },
           {
             type: 'object',
             additionalProperties: false,
+            required: ['kind', 'runId', 'output'],
             properties: {
-              kind: { type: 'string', required: true, const: 'foreground' },
-              runId: { type: 'string', required: true },
-              output: { type: 'array', required: true, items: { type: 'json' } },
+              kind: { type: 'string', const: 'foreground' },
+              runId: { type: 'string' },
+              output: { type: 'array', items: {} },
             },
           },
         ],
