@@ -61,6 +61,7 @@ export function apply(ctx, config = {}) {
   }
 
   // ── gate: tools/pre-execute ────────────────────────────────────────────────
+  ctx.logger.info('cc-permissions: gate registered (reads .claude/settings.json allow/deny/ask)')
   ctx.on('tools/pre-execute', async (exec, next) => {
     const cwd = exec.agent?.session.header.cwd ?? process.cwd()
     let loaded
@@ -76,9 +77,11 @@ export function apply(ctx, config = {}) {
       projectRoot: loaded.projectRoot,
     })
     if (result.decision === 'deny') {
+      ctx.logger.info(`cc-permissions: DENY ${exec.name} (cwd=${cwd}) — ${result.reason}`)
       return { kind: 'deny', reason: result.reason ?? 'Denied by a Claude Code permission rule.' }
     }
     if (result.decision === 'ask') {
+      ctx.logger.info(`cc-permissions: ASK ${exec.name} (cwd=${cwd}) — ${result.reason}`)
       return { kind: 'ask', reason: result.reason ?? 'A Claude Code permission rule requests confirmation.' }
     }
     return next()

@@ -47,6 +47,7 @@ export function apply(ctx, config = {}) {
     projectSkillRank: config.skillRank,
     globalSkillRank: config.globalSkillRank,
   })
+  ctx.logger.info('cc-skills: provider registered (project .claude + global ~/.claude)')
 
   if (config.enableSkills !== false) {
     ctx.skills.registerProvider((control) =>
