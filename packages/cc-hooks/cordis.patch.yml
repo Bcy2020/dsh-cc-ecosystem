@@ -1,0 +1,6 @@
+- insert:
+    - id: cc-hooks
+      name: 'dsh-cc-hooks'
+      config:
+        enabled: true
+        enableGlobal: true
