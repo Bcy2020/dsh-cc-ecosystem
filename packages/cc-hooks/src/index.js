@@ -13,8 +13,9 @@
 // project/user/plugin sources, so a hooks.json edit is picked up by the next
 // session and each plugin runs its own hooks.
 //
-// 7/31 events run (the official set), command-type hooks only; non-command
-// types and unknown events are skipped with a warning, never fatal.
+// 11/31 events run (7 bridge-wired + PostToolUseFailure, SessionEnd,
+// PreCompact, PostCompact), command-type hooks only; non-command types and
+// unknown events are skipped with a warning, never fatal.
 
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
@@ -32,6 +33,8 @@ import {
 import { parseHooksConfig, substituteCommand } from './parse.js'
 import { discoverHookFiles } from './discover.js'
 import { mergeHookConfigs } from './merge.js'
+import { IF_EVENTS, matchesIf } from './if-filter.js'
+import { ccBucket } from 'dsh-cc-loader'
 
 export const name = 'cc-hooks'
 // `shell` is required to run hooks; the rest are read opportunistically via
@@ -167,7 +170,8 @@ export function apply(ctx, config = {}) {
    * extension point decision.
    */
   async function runPoint(point, matchQuery, payload, opts) {
-    const workdir = opts.agent?.session.header.cwd
+    const session = opts.agent?.session ?? opts.session
+    const workdir = session?.header.cwd
     const cwd = workdir ?? process.cwd()
     let entry
     try {
@@ -183,10 +187,21 @@ export function apply(ctx, config = {}) {
     const hookEnv = projectDir !== undefined ? { CLAUDE_PROJECT_DIR: projectDir } : undefined
     const outputs = []
     for (const group of groups) {
-      if (!matchesMatcher(group.matcher, matchQuery, 'claude-code')) continue
+      // Tool events pass both the DSH tool name and its CC bucket name (Bash,
+      // Read, Edit…) as matcher subjects, so a CC-authored matcher like "Bash"
+      // matches the DSH `bash` tool exactly as written.
+      const matched = matchesMatcher(group.matcher, matchQuery, 'claude-code')
+        || (opts.altMatchQuery !== undefined && matchesMatcher(group.matcher, opts.altMatchQuery, 'claude-code'))
+      if (!matched) continue
       for (const hook of group.hooks) {
+        // The `if` field is evaluated only on the five tool events; a hook
+        // carrying `if` on any other event never runs (CC). On tool events a
+        // non-matching rule skips the hook; an unparseable rule fails open.
+        if (hook.if !== undefined) {
+          if (!IF_EVENTS.has(point)) continue
+          if (opts.call === undefined || !matchesIf(hook.if, opts.call, { cwd, homeDir })) continue
+        }
         const handlerId = nextHandlerId(point)
-        const session = opts.agent?.session
         if (session && opts.turn !== undefined) {
           appendHookInvoked(session, {
             turn: opts.turn, point, dialect: 'claude-code', handlerId,
@@ -277,21 +292,32 @@ export function apply(ctx, config = {}) {
   // --- PreToolUse → PreToolDecision. Matcher subject is the tool name. ---
   ctx.on('tools/pre-execute', async (exec, next) => {
     const turn = lastTurn(exec.agent)
-    const merged = await runPoint('PreToolUse', exec.name, preToolPayload(ctx, exec), { ...(exec.agent ? { agent: exec.agent } : {}), turn, signal: exec.signal })
+    const merged = await runPoint('PreToolUse', exec.name, preToolPayload(ctx, exec), {
+      ...(exec.agent ? { agent: exec.agent } : {}), turn, signal: exec.signal,
+      call: { tool: exec.name, args: exec.arguments },
+      altMatchQuery: ccBucket(exec.name) ?? undefined,
+    })
     if (merged.decision === 'deny') return { kind: 'deny', reason: merged.reason ?? 'blocked by PreToolUse hook' }
     if (merged.decision === 'ask') return { kind: 'ask', ...(merged.reason !== undefined ? { reason: merged.reason } : {}) }
     return next()
   })
 
-  // --- PostToolUse → PostToolDecision. Matcher subject is the tool name. ---
+  // --- PostToolUse / PostToolUseFailure → PostToolDecision. A failed tool
+  // fires PostToolUseFailure (CC: "After a tool call fails"), a successful one
+  // PostToolUse; the matcher subject is the tool name for both. ---
   ctx.on('tools/post-execute', async (exec, result, next) => {
     const turn = lastTurn(exec.agent)
-    const merged = await runPoint('PostToolUse', exec.name, postToolPayload(ctx, exec, result), { ...(exec.agent ? { agent: exec.agent } : {}), turn, signal: exec.signal })
+    const point = result.isError ? 'PostToolUseFailure' : 'PostToolUse'
+    const merged = await runPoint(point, exec.name, postToolPayload(ctx, point, exec, result), {
+      ...(exec.agent ? { agent: exec.agent } : {}), turn, signal: exec.signal,
+      call: { tool: exec.name, args: exec.arguments },
+      altMatchQuery: ccBucket(exec.name) ?? undefined,
+    })
     const context = contextFrom(merged)
     if (merged.decision === 'deny') {
       return {
         kind: 'block',
-        feedback: [{ type: 'text', text: merged.reason ?? 'blocked by PostToolUse hook' }],
+        feedback: [{ type: 'text', text: merged.reason ?? `blocked by ${point} hook` }],
         ...(context ? { additionalContexts: [context] } : {}),
       }
     }
@@ -328,6 +354,28 @@ export function apply(ctx, config = {}) {
     const child = subagentChildren.get(info.runId) ?? ctx.get('agents')?.get(info.id)
     subagentChildren.delete(info.runId)
     detached.track(runPoint('SubagentStop', SUBAGENT_TYPE, subagentPayload(ctx, 'SubagentStop', info, child), { ...(child ? { agent: child } : {}), signal: detached.signal }))
+  })
+
+  // --- SessionEnd → agent/disposed. Fires when a session terminates; the
+  // matcher subject is the termination reason (CC values: clear / resume /
+  // logout / prompt_input_exit / bypass_permissions_disabled / other). DSH
+  // exposes no reason, so the conservative `other` is reported and matched.
+  // Subagent disposal is SubagentStop (wired above), not SessionEnd. ---
+  ctx.on('agent/disposed', ({ agent }) => {
+    if (agent.session.header.origin === 'subagent') return
+    detached.track(runPoint('SessionEnd', 'other', sessionEndPayload(ctx, agent), { agent, signal: detached.signal }))
+  })
+
+  // --- PreCompact / PostCompact → session compaction event stream. The
+  // matcher subject is what triggered compaction (manual | auto): a manual
+  // /compact carries a sourceCommandId, automatic pressure does not. These
+  // are observe-only points: compaction is already durable by the time the
+  // event fires, so a blocking PreCompact decision cannot be honored. ---
+  ctx.on('session/event', (session, event) => {
+    if (event.type !== 'compaction/start' && event.type !== 'compaction/end') return
+    const point = event.type === 'compaction/start' ? 'PreCompact' : 'PostCompact'
+    const trigger = event.data.sourceCommandId !== undefined ? 'manual' : 'auto'
+    detached.track(runPoint(point, trigger, compactPayload(ctx, event, session, trigger), { session, signal: detached.signal }))
   })
 }
 
@@ -366,11 +414,33 @@ function promptPayload(ctx, agent, content) {
 function preToolPayload(ctx, exec) {
   return { ...base(ctx, exec.agent, 'PreToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId }
 }
-function postToolPayload(ctx, exec, result) {
-  return { ...base(ctx, exec.agent, 'PostToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId, tool_response: blocksToText(result.content) }
+function postToolPayload(ctx, event, exec, result) {
+  return { ...base(ctx, exec.agent, event), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId, tool_response: blocksToText(result.content) }
 }
 function stopPayload(ctx, agent) {
   return { ...base(ctx, agent, 'Stop'), stop_hook_active: false }
+}
+/**
+ * SessionEnd payload from the CC base plus `reason`. DSH exposes no
+ * termination reason, so the conservative `other` is always reported.
+ */
+function sessionEndPayload(ctx, agent) {
+  return { ...base(ctx, agent, 'SessionEnd'), reason: 'other' }
+}
+/**
+ * PreCompact/PostCompact payload from the CC base (session-only; no agent)
+ * plus `trigger` (manual | auto). `compactionId` mirrors CC's identity for a
+ * single compaction run and lets paired start/end hooks correlate.
+ */
+function compactPayload(ctx, event, session, trigger) {
+  return {
+    session_id: session.header.id ?? '',
+    transcript_path: ctx.get('sessionPersistence')?.locate(session.header)?.path ?? '',
+    cwd: session.header.cwd ?? process.cwd(),
+    hook_event_name: event,
+    trigger,
+    compactionId: event.data.compactionId,
+  }
 }
 /**
  * SubagentStart/SubagentStop payload from the CC base (the child's

@@ -10,7 +10,7 @@ process-level, read once at load; its own source carries the
 |---|---|
 | 包名 | `dsh-cc-hooks` |
 | 依赖 | `@deepseek-ai/dsh-hook-protocol`(官方共享协议层,peer)、`dsh-cc-loader`(file: 共享解析层) |
-| 事件 | 7/31 官方桥映射集:SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / Stop / SubagentStart / SubagentStop |
+| 事件 | 11/31:官方 7 映射集 + 批次 A 扩展 —— SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / PostToolUseFailure / Stop / SubagentStart / SubagentStop / SessionEnd / PreCompact / PostCompact |
 | 动作类型 | `command` 型(其余 http/mcp_tool/prompt/agent 解析即跳过 + 警告,与官方桥一致) |
 | 宿主 DSH | 0.1.0-rc.x(协议 peer 钉 `0.1.0-rc.6`,npm 无 rc.5 发布) |
 
@@ -110,8 +110,25 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-hooks
 }
 ```
 
-31 个事件中,协议只跑 command 型且只跑官方桥映射的 7 个;其余事件名在 JSON
-里是普通 key,自然忽略(建议对未知事件名打 warn——当前按官方桥行为:静默忽略)。
+31 个事件中,协议只跑 command 型且只跑已接线的 11 个(`WIRED_EVENTS`);其余
+20 个事件名在 JSON 里是普通 key,解析通过但暂不执行(parsed-but-inert)。
+
+### 批次 A 新增接线
+
+| 事件 | DSH 扩展点 | matcher subject | 语义 |
+|---|---|---|---|
+| `PostToolUseFailure` | `tools/post-execute`(result.isError) | 工具名 | 工具失败时触发;deny → block + 反馈,与 PostToolUse 同形 |
+| `SessionEnd` | `agent/disposed`(仅顶层会话) | 结束原因 | DSH 无原因概念 → 恒报 `other`;observe-only |
+| `PreCompact` | session 事件流 `compaction/start` | `manual` / `auto` | 手动 `/compact` 带 `sourceCommandId` → manual,自动压缩 → auto;observe-only(压缩已落盘,block 无法兑现) |
+| `PostCompact` | session 事件流 `compaction/end` | `manual` / `auto` | observe-only |
+
+### `if` 字段执行过滤
+
+- 仅 5 个 tool 事件评估:PreToolUse / PostToolUse / PostToolUseFailure /
+  PermissionRequest / PermissionDenied;**其他事件上带 `if` 的 hook 永不运行**(CC 官方)
+- 单条权限规则(无 `&&`/`||`/列表);Bash 按**任一子命令**匹配,含 `$()`/反引号
+  内命令;前置 `VAR=value` 剥离;**规则无法解析 → fail-open 运行**(CC 官方)
+- matcher 同时匹配 DSH 工具名(`bash`)与 CC 桶名(`Bash`),CC 原样配置直接生效
 
 ## 与官方桥的差异
 
@@ -123,17 +140,21 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-hooks
 | — | 项目级优先,插件最后(CC 作用域语义) |
 
 决策映射(PreToolUse deny/ask、PostToolUse block+context、UserPromptSubmit
-reject、Stop steer、SessionStart/Subagent* 注入)与官方桥逐点一致。
+reject、Stop steer、SessionStart/Subagent* 注入)与官方桥逐点一致;批次 A 的
+PostToolUseFailure 沿用 PostToolUse 的 block+context 映射,SessionEnd 与
+PreCompact/PostCompact 为 observe-only(不注入、不阻断)。
 
 ## 测试
 
 ```sh
-node --test test/hooks-merge.test.mjs
+node --test test/hooks-merge.test.mjs test/hooks-integration.mjs test/hooks-matrix.test.mjs test/hooks-batch-a.test.mjs
 ```
 
 覆盖:解析(settings/bare 形态、非 command 跳过、非法 matcher 抛错)、
 `${CLAUDE_*}` 替换、三来源发现(项目/全局/插件)、跨源合并、协议折叠
-(deny>ask>allow)、matcher 语义。
+(deny>ask>allow)、matcher 语义、60% 语法矩阵(465 + 12 特殊)、批次 A(`if`
+过滤语义、PostToolUseFailure 分支、SessionEnd 顶层会话、PreCompact/PostCompact
+manual/auto)。
 
 ## License
 

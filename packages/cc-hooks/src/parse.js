@@ -31,6 +31,17 @@ export const BRIDGE_EVENTS = [
 ]
 
 /**
+ * The events this plugin actually wires (the official 7 plus batch-A
+ * additions): PostToolUseFailure fires from tools/post-execute on a failed
+ * tool, SessionEnd from agent/disposed, and PreCompact/PostCompact from the
+ * session compaction event stream. Everything else stays parsed-but-inert.
+ */
+export const WIRED_EVENTS = [
+  ...BRIDGE_EVENTS,
+  'PostToolUseFailure', 'SessionEnd', 'PreCompact', 'PostCompact',
+]
+
+/**
  * Events with no matcher subject (CC: a matcher there is silently ignored):
  * UserPromptSubmit / PostToolBatch / Stop / TeammateIdle / TaskCreated /
  * TaskCompleted / WorktreeCreate / WorktreeRemove / MessageDisplay / CwdChanged.

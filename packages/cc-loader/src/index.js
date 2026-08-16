@@ -27,5 +27,5 @@ export {
 } from './map-tools.js'
 export {
   evaluateCall, parseRulesFor, splitSubcommands, removedToolNames,
-  classifyComponents, STATUS,
+  classifyComponents, STATUS, matchesIfRule,
 } from './classify.js'

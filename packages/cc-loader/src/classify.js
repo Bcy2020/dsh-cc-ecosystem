@@ -340,6 +340,53 @@ function matchParamRule(rule, call) {
   return value === rule.value
 }
 
+/**
+ * CC hook `if`-field matching: does the rule select this call?
+ *
+ * CC evaluates `if` with permission-rule syntax but as a FILTER, not a
+ * decision: the hook runs when the rule matches, and stays silent otherwise.
+ * Two deliberate semantic choices, both documented in CC's hooks reference:
+ * - Bash/PowerShell command rules match when ANY subcommand matches (CC: "each
+ *   subcommand is checked; git push matches"), which is the deny/ask (some)
+ *   reading, not the allow (every) reading used by permission folding.
+ * - Path rules match anchored like allow rules (CC v2.1.214+: a single-segment
+ *   pattern `Edit(src/**)` matches only the working-directory anchor, not any
+ *   depth), so the rule is evaluated with bucket 'allow'.
+ *
+ * Fail-open is the CALLER's job: a rule that cannot be parsed must run the
+ * hook anyway (CC: "The filter also fails open … when the Bash command can't
+ * be parsed"), so this function assumes a parsed, valid rule.
+ *
+ * @param {object} rule - structured rule from {@link parseRule}.
+ * @param {{ tool: string, args: Record<string, unknown> }} call
+ * @param {object} env - { cwd, homeDir } matching context.
+ * @returns {boolean} whether the rule selects the call.
+ */
+export function matchesIfRule(rule, call, env) {
+  switch (rule.kind) {
+    case 'bare':
+    case 'tool-glob':
+      return matchBareTarget(rule, call.tool)
+    case 'command':
+      // any-subcommand semantics (deny bucket) — see header comment.
+      return matchCommandRule({ ...rule, bucket: 'deny' }, call, env)
+    case 'path':
+      // anchored (allow bucket) semantics — see header comment.
+      return matchPathRule({ ...rule, bucket: 'allow' }, call, env)
+    case 'domain':
+      return matchDomainRule(rule, call)
+    case 'param':
+      return matchParamRule(rule, call)
+    case 'skill-name':
+      return ccBucket(call.tool) === 'Skill' && call.args?.name === rule.name
+    case 'agent-name':
+      // `Agent(Name)` restricts a subagent by name; no tool call carries it.
+      return false
+    default:
+      return false
+  }
+}
+
 // ─── tool removal (bare-name deny) ───────────────────────────────────────────
 
 /**

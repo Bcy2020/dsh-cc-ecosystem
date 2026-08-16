@@ -1,7 +1,7 @@
 {
   "name": "dsh-cc-hooks",
   "version": "0.1.0",
-  "description": "Run unmodified Claude Code command hooks in DSH with per-session discovery: project .claude/hooks + global ~/.claude/hooks + plugin dirs, executed via @deepseek-ai/dsh-hook-protocol (7/31 events, command type only). Breaks the official bridge's process-level single-config limit.",
+  "description": "Run unmodified Claude Code command hooks in DSH with per-session discovery: project .claude/hooks + global ~/.claude/hooks + plugin dirs, executed via @deepseek-ai/dsh-hook-protocol (11/31 events, command type only, incl. if-field filtering). Breaks the official bridge's process-level single-config limit.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
