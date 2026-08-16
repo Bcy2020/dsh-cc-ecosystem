@@ -7,6 +7,7 @@ import { discoverSettings, mergeSettings } from './settings.js'
 import { parseRulesFor, removedToolNames, classifyComponents } from './classify.js'
 import { STATUS } from './classify.js'
 import { mergeAgentCatalog } from './agents.js'
+import { discoverProjectMcp } from './mcp.js'
 
 /**
  * Load Claude Code `.claude/` assets (project + optional global ~/.claude)
@@ -77,11 +78,21 @@ export async function loadClaude(opts = {}) {
     sources: merged.sources,
   }
 
+  // MCP servers: project-root .mcp.json (CC project-level config).
+  const mcp = { servers: [], sources: [] }
+  if (projectRoot !== undefined) {
+    const found = await discoverProjectMcp(projectRoot, { warn: (m) => warnings.push(m) })
+    mcp.servers.push(...found.servers)
+    mcp.sources.push(...found.sources)
+    warnings.push(...found.warnings)
+  }
+
   const components = {
     skills: skills.map((s) => ({ ...s, status: s.status ?? STATUS.DIRECT })),
     commands: commands.map((c) => ({ ...c, status: c.status ?? STATUS.DIRECT })),
     rules: rules.map((r) => ({ ...r, status: r.status ?? STATUS.DIRECT })),
     agents: catalog.agents,
+    mcp,
     permissions,
     unsupported: [], // future: workflows/monitors/themes/bin classification lands here
   }

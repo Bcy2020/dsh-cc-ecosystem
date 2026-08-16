@@ -1,0 +1,9 @@
+- insert:
+    - id: cc-mcp
+      name: 'dsh-cc-mcp'
+      config:
+        enableProject: true
+        pluginRoots: []
+        idleTimeoutMs: 300000
+        toolCallTimeoutMs: 60000
+        watchProject: true

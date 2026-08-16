@@ -19,6 +19,10 @@ export {
   discoverAgents, mergeAgentCatalog, buildAgentEntry, classifyAgentFields,
   expandCcToolToDsh,
 } from './agents.js'
+export {
+  parseMcpText, serverEntries, discoverMcpConfig, discoverProjectMcp,
+  VALID_SERVER_NAME, ENV_PLACEHOLDER,
+} from './mcp.js'
 export { parseRule } from './parse-rule.js'
 export { compileCommandPattern, compilePathPattern, compileDomainPattern, winPathToPosix, escapeRegExp } from './patterns.js'
 export {

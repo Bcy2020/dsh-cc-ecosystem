@@ -15,8 +15,9 @@ Load Claude Code `.claude/` assets (skills, commands, rules, permissions, agents
 | [dsh-cc-permissions](packages/cc-permissions) | 适配器:`tools/pre-execute` 门强制 CC 权限规则;裸名 deny 隐藏工具;`defaultMode=dontAsk` → 审批 never | ✅ M1.5 |
 | [dsh-cc-agents](packages/cc-agents) | 适配器:`.claude/agents`(身份锚定子代理)→ 会话启动注入 agent 目录(CC @-mention 语义)+ `cc_agent` 派发工具(persona = 正文,`tools`/`disallowedTools` → toolFilter,`skills` 预载,`model` 经 `modelAliases` 映射) | ✅ M2 |
 | [dsh-cc-hooks](packages/cc-hooks) | 适配器:发现项目/全局/插件 `hooks.json` → 合并 → 经 `dsh-hook-protocol`(官方库)按 CC 语义运行(7 事件,command 型),per-session 发现突破官方桥进程级限制 | ✅ M2 |
+| [dsh-cc-mcp](packages/cc-mcp) | 适配器:发现 CC MCP 配置(项目根 `.mcp.json` + 插件 `.mcp.json`/plugin.json 内联 `mcpServers`)→ 经官方 `@modelcontextprotocol/sdk` 运行时注册为 DSH 工具(项目级 `mcp__<server>__<tool>`,插件级 `mcp__plugin_<name>_<server>__<tool>` CC 官方命名);env 值运行时展开不落盘;lazy 连接 + idle 回收 + `.mcp.json` 热重载 | 🚧 M3 |
 
-规划中:M3 `dsh-cc-mcp` + `dsh-cc-lsp`、M4 loader/marketplace、M5 `dsh-cc-misc` + `dsh-cc` 全家桶 meta 包。
+规划中:M3 `dsh-cc-lsp`、M4 loader/marketplace、M5 `dsh-cc-misc` + `dsh-cc` 全家桶 meta 包。
 
 ## 支持的 CC 权限语义(与 Claude Code 一致)
 
@@ -37,7 +38,7 @@ Load Claude Code `.claude/` assets (skills, commands, rules, permissions, agents
 
 ```sh
 # 先装共享库,再装插件(开发期本地 checkout 需在包内 pnpm link ../cc-loader)
-dsh plugin --profile <name> add dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents dsh-cc-hooks
+dsh plugin --profile <name> add dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents dsh-cc-hooks dsh-cc-mcp
 ```
 
 本地 patch 挂载(Web profile 热更新)见各包 README;Windows 绝对路径必须 `file:///` 前缀。
@@ -46,9 +47,9 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-skills dsh-cc-permissions d
 
 ## 验证
 
-- 单元测试:`node --test test/loader.test.mjs`(36 用例)+ `test/agents.test.mjs`(7 用例)+ `test/hooks-merge.test.mjs`(11 用例)
+- 单元测试:`node --test test/loader.test.mjs`(36 用例)+ `test/agents.test.mjs`(7 用例)+ `test/hooks-merge.test.mjs`(11 用例)+ `test/mcp.test.mjs`(21 用例)+ `test/mcp-adapter.test.mjs`(11 用例,含真实 stdio MCP 往返)
 - 真实项目验证:`node test/validate-demo.mjs`(对带真实 skill + 权限配置的项目做端到端求值)
-- 端到端演示项目:`../cc-demo-project/`(真实 anthropics 技能 + 权限 + agents + hooks,README 含 11 组测试提示词与预期行为速查)
+- 端到端演示项目:`../cc-demo-project/`(真实 anthropics 技能 + 权限 + agents + hooks + MCP,README 含 11 组测试提示词与预期行为速查)
 
 ## License
 
