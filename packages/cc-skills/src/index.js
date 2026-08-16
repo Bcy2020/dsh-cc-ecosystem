@@ -232,10 +232,20 @@ async function activateSkillScope(ctx, agent, skillName, loaderOpts) {
   for (const n of notes) log(ctx, 'warn', `skill "${skillName}": ${n}`)
 
   // Hide disallowed tools from the model via the agent's scoped registry.
+  // NOTE (verified in dsh-tools view()): restrict() only admits INHERITED
+  // global tools — the global layer plus ancestor preset layers. A tool
+  // registered in the agent's OWN scope layer (e.g. fs tools the agent
+  // preset mounts per-session) is never restrictable: "A restriction filters
+  // what a scope inherits … and never what its OWN layer registers." Those
+  // still get denied at pre-execute (the gate below), but stay visible.
   const disposers = []
   if (disallowed.size > 0 && typeof agent.ctx?.tools?.restrict === 'function') {
     for (const name of disallowed) {
-      try { disposers.push(agent.ctx.tools.restrict({ deny: [name] })) } catch { /* unknown tool: pre-execute still denies */ }
+      try {
+        disposers.push(agent.ctx.tools.restrict({ deny: [name] }))
+      } catch (error) {
+        log(ctx, 'warn', `skill "${skillName}": restrict "${name}" failed (still denied at pre-execute): ${String(error)}`)
+      }
     }
   }
   clearAgentScope(agentId, disposers)

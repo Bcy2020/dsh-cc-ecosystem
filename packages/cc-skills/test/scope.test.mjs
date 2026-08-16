@@ -282,3 +282,42 @@ test('disallowed tools are hidden from the model via agent.ctx.tools.restrict', 
     await rm(cwd, { recursive: true, force: true })
   }
 })
+
+test('restrict failure degrades to pre-execute deny (own-layer tools stay visible)', async () => {
+  // Mirrors the real host: tools registered in the agent's OWN scope layer
+  // (web surface mounts tool-fs per session) are NOT restrictable —
+  // tools.restrict() throws "names unknown global tool" for them. The gate
+  // must still deny at pre-execute so disallowed-tools semantics hold.
+  const ctx = new Context()
+  const cwd = await fixture()
+  try {
+    ctx.provide('skills', stubSkills())
+    apply(ctx, Config({ homeDir: join(tmpdir(), 'nohome') }))
+    const agent = {
+      id: 'a5',
+      session: {
+        header: { cwd },
+        surface: { nodes: [] },
+        events: [],
+      },
+      ctx: {
+        tools: {
+          restrict() { throw new Error('tools.restrict() names unknown global tool "write"; known global tools: (none)') },
+        },
+      },
+    }
+    // Activate via the skill tool call; restrict throws but must not propagate.
+    const skillCall = await ctx.waterfall('tools/pre-execute', {
+      agent, name: 'skill', arguments: { name: 'scoped' },
+    }, () => Promise.resolve({ kind: 'allow' }))
+    assert.equal(skillCall.kind, 'allow', 'skill tool call stays allowed even when restrict throws')
+
+    const denied = await ctx.waterfall('tools/pre-execute', {
+      agent, name: 'edit', arguments: { file_path: '/x' },
+    }, () => Promise.resolve({ kind: 'allow' }))
+    assert.equal(denied.kind, 'deny', 'own-layer tool still denied at pre-execute')
+    assert.match(denied.reason, /disallowed-tools/)
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
