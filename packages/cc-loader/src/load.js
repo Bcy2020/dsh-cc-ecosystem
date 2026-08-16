@@ -8,6 +8,7 @@ import { parseRulesFor, removedToolNames, classifyComponents } from './classify.
 import { STATUS } from './classify.js'
 import { mergeAgentCatalog } from './agents.js'
 import { discoverProjectMcp } from './mcp.js'
+import { discoverPluginRoot, discoverMarketplace } from './plugin.js'
 
 /**
  * Load Claude Code `.claude/` assets (project + optional global ~/.claude)
@@ -20,6 +21,8 @@ import { discoverProjectMcp } from './mcp.js'
  * @param {string} [opts.globalClaudeDir]
  * @param {number} [opts.projectSkillRank=150]
  * @param {number} [opts.globalSkillRank=160]
+ * @param {string[]} [opts.pluginRoots] - plugin dirs to inventory (M4).
+ * @param {string[]} [opts.marketplaceRoots] - marketplace dirs to inventory (M4).
  * @returns {Promise<object>} IR { cwd, projectRoot, components, warnings, report }
  */
 export async function loadClaude(opts = {}) {
@@ -97,6 +100,24 @@ export async function loadClaude(opts = {}) {
   // discoverLspConfig() is exported for adapters that do scan plugin dirs.
   const lsp = { servers: [], sources: [] }
 
+  // Plugins + marketplaces (M4): each plugin root is inventoried into its own
+  // IR block. Plugin components stay namespaced by plugin (components.plugins)
+  // and are NOT merged into the top-level skills/commands/agents — adapters
+  // consume them through the plugin block and apply CC's <plugin>:<name>
+  // namespacing themselves.
+  const plugins = []
+  const marketplaces = []
+  for (const root of opts.pluginRoots ?? []) {
+    const plugin = await discoverPluginRoot(root, { warn: (m) => warnings.push(m) })
+    warnings.push(...plugin.warnings)
+    plugins.push(plugin)
+  }
+  for (const root of opts.marketplaceRoots ?? []) {
+    const mp = await discoverMarketplace(root, { warn: (m) => warnings.push(m) })
+    warnings.push(...mp.warnings)
+    marketplaces.push(mp)
+  }
+
   const components = {
     skills: skills.map((s) => ({ ...s, status: s.status ?? STATUS.DIRECT })),
     commands: commands.map((c) => ({ ...c, status: c.status ?? STATUS.DIRECT })),
@@ -105,6 +126,8 @@ export async function loadClaude(opts = {}) {
     mcp,
     lsp,
     permissions,
+    plugins,
+    marketplaces,
     unsupported: [], // future: workflows/monitors/themes/bin classification lands here
   }
 

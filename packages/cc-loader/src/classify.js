@@ -435,6 +435,21 @@ export function classifyComponents(ir) {
   for (const a of ir.components.agents ?? []) consider(a.status ?? STATUS.DIRECT, 'agent', a.name, a.notes?.join('; ') || undefined)
   for (const s of ir.components.mcp?.servers ?? []) consider(s.status ?? STATUS.DIRECT, 'mcp-server', s.serverName, s.reason)
   for (const s of ir.components.lsp?.servers ?? []) consider(s.status ?? STATUS.DIRECT, 'lsp-server', s.language, s.reason)
+  for (const p of ir.components.plugins ?? []) {
+    consider(STATUS.DIRECT, 'plugin', p.name, undefined)
+    for (const u of p.components?.unsupported ?? []) {
+      counts.total++
+      counts.unsupported++
+      unsupported.push({ ...u, plugin: p.name })
+    }
+  }
+  for (const mp of ir.components.marketplaces ?? []) {
+    if (mp.marketplace === undefined) continue
+    consider(STATUS.DIRECT, 'marketplace', mp.marketplace.name, undefined)
+    for (const entry of mp.plugins ?? []) {
+      consider(entry.status ?? STATUS.UNSUPPORTED, 'marketplace-plugin', entry.name, entry.reason)
+    }
+  }
   const perm = ir.components.permissions
   if (perm !== undefined) {
     if (perm.status === STATUS.DIRECT || perm.status === STATUS.UNSUPPORTED) {

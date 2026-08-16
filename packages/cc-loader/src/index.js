@@ -23,7 +23,11 @@ export {
   parseMcpText, serverEntries, discoverMcpConfig, discoverProjectMcp,
   VALID_SERVER_NAME, ENV_PLACEHOLDER,
 } from './mcp.js'
-export { discoverLspConfig } from './lsp.js'
+export { discoverLspConfig, parseLspText } from './lsp.js'
+export {
+  parsePluginManifest, parseMarketplace, discoverPluginRoot, discoverMarketplace,
+  normalizePluginSource, pluginNameOf, PLUGIN_NAME_RE, RESERVED_MARKETPLACE_NAMES,
+} from './plugin.js'
 export { parseRule } from './parse-rule.js'
 export { compileCommandPattern, compilePathPattern, compileDomainPattern, winPathToPosix, escapeRegExp } from './patterns.js'
 export {

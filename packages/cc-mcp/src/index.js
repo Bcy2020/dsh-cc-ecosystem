@@ -18,7 +18,12 @@ import { readFile, mkdir, appendFile } from 'node:fs/promises'
 import { watchFile, unwatchFile } from 'node:fs'
 import { join } from 'node:path'
 import Schema from '@deepseek-ai/schemastery'
-import { findProjectRoot, discoverProjectMcp, discoverMcpConfig } from 'dsh-cc-loader'
+import { findProjectRoot, discoverProjectMcp, discoverPluginRoot } from 'dsh-cc-loader'
+
+// Re-exported for callers that need the dir-basename fallback name without a
+// manifest (discoverPluginRoot prefers manifest `name`; pluginNameOf is the
+// no-manifest fallback).
+export { pluginNameOf } from 'dsh-cc-loader'
 import {
   publicToolName, connectAndList, createDefinition, clearIdle,
 } from './register.js'
@@ -114,21 +119,18 @@ async function collectEntries(state) {
     sources.push(...found.sources)
   }
   for (const root of cfg.pluginRoots) {
-    const found = await discoverMcpConfig(root, { pluginName: pluginNameOf(root), warn: (m) => log(state.ctx, 'warn', `agent ${state.agent.id}: ${m}`) })
-    entries.push(...toRuntimeEntries(found.servers, {
+    // discoverPluginRoot inventories the whole plugin (M4): manifest name
+    // wins over the directory name for the tool namespace, and manifest
+    // `mcpServers` path/inline configs are included alongside .mcp.json.
+    const plugin = await discoverPluginRoot(root, { warn: (m) => log(state.ctx, 'warn', `agent ${state.agent.id}: ${m}`) })
+    entries.push(...toRuntimeEntries(plugin.components.mcp.servers, {
       pluginRoot: root,
       idleTimeoutMs: cfg.idleTimeoutMs,
       toolCallTimeoutMs: cfg.toolCallTimeoutMs,
     }))
-    sources.push(...found.sources)
+    sources.push(...plugin.components.mcp.sources)
   }
   return { entries, sources }
-}
-
-/** Plugin directory name as the CC plugin name used in tool namespaces. */
-export function pluginNameOf(root) {
-  const base = root.split(/[\\/]/).filter(Boolean).pop() ?? 'plugin'
-  return base.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32) || 'plugin'
 }
 
 // ─── schema sync + registration ──────────────────────────────────────────────
