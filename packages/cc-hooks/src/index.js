@@ -304,10 +304,18 @@ export function apply(ctx, config = {}) {
 
   // --- PostToolUse / PostToolUseFailure → PostToolDecision. A failed tool
   // fires PostToolUseFailure (CC: "After a tool call fails"), a successful one
-  // PostToolUse; the matcher subject is the tool name for both. ---
+  // PostToolUse; the matcher subject is the tool name for both.
+  //
+  // DSH only marks `result.isError` for infrastructure failures (spawn
+  // errors, aborts). A shell command that ran but exited non-zero is a
+  // SUCCESSFUL tool in DSH terms — its result carries `exitCode: N` in the
+  // canonical value (canonicalPwshResult/canonicalBashResult) and renders as
+  // `[exit code: N]`. CC treats a non-zero exit as a failed tool, so the
+  // failure event must also fire for `exitCode !== 0`. ---
   ctx.on('tools/post-execute', async (exec, result, next) => {
     const turn = lastTurn(exec.agent)
-    const point = result.isError ? 'PostToolUseFailure' : 'PostToolUse'
+    const failed = result.isError === true || toolExitedNonZero(result)
+    const point = failed ? 'PostToolUseFailure' : 'PostToolUse'
     const merged = await runPoint(point, exec.name, postToolPayload(ctx, point, exec, result), {
       ...(exec.agent ? { agent: exec.agent } : {}), turn, signal: exec.signal,
       call: { tool: exec.name, args: exec.arguments },
@@ -387,6 +395,21 @@ function lastTurn(agent) {
   if (!agent) return 0
   const last = [...agent.session.events].findLast((e) => e.type === 'turn/start')
   return last?.type === 'turn/start' ? last.data.turn : 0
+}
+
+/**
+ * Whether a tool result reports a non-zero shell exit code. DSH shell tools
+ * return the canonical `{ kind: 'foreground', exitCode, … }` value for a
+ * command that ran (even one that failed), so `exitCode !== 0` identifies a
+ * CC-style tool failure that `result.isError` (infrastructure only) misses.
+ * Background acknowledgements and non-shell tools carry no exitCode and are
+ * never failures here.
+ */
+function toolExitedNonZero(result) {
+  const value = result?.value
+  if (typeof value !== 'object' || value === null) return false
+  const exitCode = value.exitCode
+  return typeof exitCode === 'number' && Number.isFinite(exitCode) && exitCode !== 0
 }
 
 /** Flatten content blocks to the text a hook payload carries (the common case). */

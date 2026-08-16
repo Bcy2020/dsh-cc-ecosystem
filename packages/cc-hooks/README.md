@@ -144,6 +144,14 @@ reject、Stop steer、SessionStart/Subagent* 注入)与官方桥逐点一致;批
 PostToolUseFailure 沿用 PostToolUse 的 block+context 映射,SessionEnd 与
 PreCompact/PostCompact 为 observe-only(不注入、不阻断)。
 
+### PostToolUseFailure 的宿主差异(非零退出码)
+
+CC 中 Bash/PowerShell 命令**非零退出码 = 工具失败** → 触发 PostToolUseFailure;
+DSH 的 shell 工具把非零退出码渲染成 `[exit code: N]` 标记、`result.isError`
+仅为基础设施故障(spawn 错误/abort)。为对齐 CC 语义,本插件在
+`tools/post-execute` 里同时检查 canonical value 的 `exitCode !== 0`,非零即
+走 PostToolUseFailure(`git status` 在非仓库目录、`bash -c "exit 1"` 都是此类)。
+
 ## 测试
 
 ```sh

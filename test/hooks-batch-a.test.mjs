@@ -231,6 +231,20 @@ test('batch-A wiring: PostToolUseFailure fires on a failed tool, PostToolUse on 
     assert.ok(seen.includes('PostToolUseFailure'))
     assert.ok(!seen.includes('PostToolUse'))
     assert.ok(Array.isArray(failDecision.additionalContexts) && failDecision.additionalContexts.length === 1, 'PostToolUseFailure context injected')
+
+    // DSH shell tools exit non-zero WITHOUT isError (canonical value carries
+    // exitCode) — CC treats that as a failed tool → PostToolUseFailure too.
+    seen.length = 0
+    const nonzeroExec = execFor(agent, 'bash', { command: 'bash -c "exit 1"' })
+    const nonzeroResult = {
+      isError: false,
+      content: [{ type: 'text', text: '[exit code: 1] failed' }],
+      value: { kind: 'foreground', exitCode: 1, signal: null, timedOut: false, aborted: false },
+    }
+    const nonzeroDecision = await ctx._listeners['tools/post-execute'](nonzeroExec, nonzeroResult, async () => ({ kind: 'accept', content: [] }))
+    assert.ok(seen.includes('PostToolUseFailure'), 'non-zero exit without isError must fire PostToolUseFailure')
+    assert.ok(!seen.includes('PostToolUse'))
+    assert.ok(Array.isArray(nonzeroDecision.additionalContexts) && nonzeroDecision.additionalContexts.length === 1)
   } finally {
     rmSync(home, { recursive: true, force: true })
     rmSync(project, { recursive: true, force: true })
@@ -313,5 +327,41 @@ test('batch-A: WIRED_EVENTS covers the 11 wired events', () => {
     'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop',
     'SubagentStart', 'SubagentStop', 'PostToolUseFailure', 'SessionEnd',
     'PreCompact', 'PostCompact',
+  ])
+})
+
+test('demo hooks.json: 14 command hooks across 11 events + 4 non-command types skipped', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { parseHooksConfig } = await import('../packages/cc-hooks/src/parse.js')
+  const raw = JSON.parse(readFileSync(join(demoRoot, '.claude', 'hooks', 'hooks.json'), 'utf8'))
+  const { config, skipped } = parseHooksConfig(raw)
+
+  // 11 events carry command hooks; every wired event is present.
+  const events = Object.keys(config)
+  assert.equal(events.length, 11)
+  for (const ev of WIRED_EVENTS) assert.ok(events.includes(ev), `wired event ${ev} configured in demo`)
+
+  // 14 command entries (PreToolUse has 4: guard + if-guarded bash observe +
+  // if-guarded pwsh observe + file-tool observe).
+  const count = events.reduce((n, ev) => n + config[ev].reduce((m, g) => m + g.hooks.length, 0), 0)
+  assert.equal(count, 14)
+
+  // The `if` fields survive parsing on the guarded observe hooks (bash rm +
+  // pwsh Remove-Item, matching CC's two-handler-per-tool pattern).
+  const preTool = config.PreToolUse.flatMap((g) => g.hooks)
+  assert.ok(preTool.some((h) => h.if === 'Bash(rm *)'))
+  assert.ok(preTool.some((h) => h.if === 'PowerShell(Remove-Item *)'))
+  // Both matcher styles parse: CC bucket names (Bash|PowerShell, Read|Edit|Write)
+  // and DSH names (bash|pwsh).
+  const matchers = config.PreToolUse.map((g) => g.matcher).sort()
+  assert.deepEqual(matchers, ['Bash|PowerShell', 'Read|Edit|Write'])
+  assert.equal(config.PostToolUse[0].matcher, 'bash|pwsh')
+
+  // All four non-command types are skipped with a warning, never fatal.
+  assert.deepEqual(skipped.sort((a, b) => a.event.localeCompare(b.event)), [
+    { event: 'Notification', type: 'http' },
+    { event: 'PostToolUse', type: 'mcp_tool' },
+    { event: 'Stop', type: 'agent' },
+    { event: 'UserPromptExpansion', type: 'prompt' },
   ])
 })
