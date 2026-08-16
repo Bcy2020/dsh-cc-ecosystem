@@ -27,7 +27,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "dsh-cc-loader": "file:../cc-loader"
+    "dsh-cc-loader": "^0.1.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -40,11 +40,19 @@
     "@deepseek-ai/schemastery": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/cordis": { "optional": true },
-    "@deepseek-ai/dsh-subprocess": { "optional": true },
-    "@deepseek-ai/schemastery": { "optional": true }
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subprocess": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "repository": "git+https://github.com/Bcy2020/dsh-cc-ecosystem.git",
+  "homepage": "https://github.com/Bcy2020/dsh-cc-ecosystem"
 }

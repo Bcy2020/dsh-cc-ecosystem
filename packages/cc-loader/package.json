@@ -8,7 +8,8 @@
     ".": "./src/index.js"
   },
   "files": [
-    "src"
+    "src",
+    "README.md"
   ],
   "keywords": [
     "dsh",
@@ -23,5 +24,7 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "repository": "git+https://github.com/Bcy2020/dsh-cc-ecosystem.git",
+  "homepage": "https://github.com/Bcy2020/dsh-cc-ecosystem"
 }
