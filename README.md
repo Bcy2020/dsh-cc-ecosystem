@@ -17,11 +17,12 @@ Load Claude Code `.claude/` assets (skills, commands, rules, permissions, agents
 | [dsh-cc-hooks](packages/cc-hooks) | 适配器:发现项目/全局/插件 `hooks.json` → 合并 → 经 `dsh-hook-protocol`(官方库)按 CC 语义运行(7 事件,command 型),per-session 发现突破官方桥进程级限制 | ✅ M2 |
 | [dsh-cc-mcp](packages/cc-mcp) | 适配器:发现 CC MCP 配置(项目根 `.mcp.json` + 插件 `.mcp.json`/plugin.json 内联 `mcpServers`)→ 经官方 `@modelcontextprotocol/sdk` 运行时注册为 DSH 工具(项目级 `mcp__<server>__<tool>`,插件级 `mcp__plugin_<name>_<server>__<tool>` CC 官方命名);env 值运行时展开不落盘;lazy 连接 + idle 回收 + `.mcp.json` 热重载 | ✅ M3 |
 
-M4(plugin.json / marketplace / plugin 命名空间 / enableAllProjectMcpServers)已完成;规划中:M5 `dsh-cc-misc` + `dsh-cc` 全家桶 meta 包;LSP 桥接(mcpls)研究完成,实现待生态需求确认后启动。
+M4(plugin.json / marketplace / plugin 命名空间 / enableAllProjectMcpServers)已完成;**6 包已发布 npm v0.1.0**(`npm i dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents dsh-cc-hooks dsh-cc-mcp`);规划中:M5 `dsh-cc-misc` + `dsh-cc` 全家桶 meta 包;LSP 桥接(mcpls)研究完成,实现待生态需求确认后启动。
 
 ## 实装与发布
 
 - **[安装技能(另一台电脑实装经验总结)](DSHCCECO-INSTALL-SKILL.md)**:完整的热挂载步骤 —— junction hub 依赖解析、`cordis.patch.yml` `file:///` 挂载(含 `?v=N` 热更新)、宿主 Loader 树验证(`pluginInventory/list`)、逐插件行为验证、M4 插件目录(`pluginRoots`)配置。
+- **npm 发布(v0.1.0,2026-08)**:6 包已全部发布;`dsh-cc-loader` 先发(其余包 `^0.1.0` 依赖它);本机 npm 源为镜像时发布需 `--registry=https://registry.npmjs.org`,开 2FA 的账号需 granular token + 2FA bypass。
 
 ## 支持的 CC 权限语义(与 Claude Code 一致)
 
