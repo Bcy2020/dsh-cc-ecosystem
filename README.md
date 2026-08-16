@@ -19,6 +19,10 @@ Load Claude Code `.claude/` assets (skills, commands, rules, permissions, agents
 
 M4(plugin.json / marketplace / plugin 命名空间 / enableAllProjectMcpServers)已完成;规划中:M5 `dsh-cc-misc` + `dsh-cc` 全家桶 meta 包;LSP 桥接(mcpls)研究完成,实现待生态需求确认后启动。
 
+## 实装与发布
+
+- **[安装技能(另一台电脑实装经验总结)](DSHCCECO-INSTALL-SKILL.md)**:完整的热挂载步骤 —— junction hub 依赖解析、`cordis.patch.yml` `file:///` 挂载(含 `?v=N` 热更新)、宿主 Loader 树验证(`pluginInventory/list`)、逐插件行为验证、M4 插件目录(`pluginRoots`)配置。
+
 ## 支持的 CC 权限语义(与 Claude Code 一致)
 
 - 规则语法 `Tool` / `Tool(spec)`:Bash/PowerShell 命令 glob(`*`、`:*` 后缀、词边界)、Read/Edit gitignore 路径锚定(`//` 绝对、`~/` 家目录、`/` 相对 settings 源)、`WebFetch(domain:…)`、`mcp__server__tool`、`Agent(name)`、`Skill(name)`、`Tool(param:value)`
@@ -36,6 +40,8 @@ M4(plugin.json / marketplace / plugin 命名空间 / enableAllProjectMcpServers)
 
 ## 安装
 
+> **推荐**:新机器按 [DSHCCECO-INSTALL-SKILL.md](DSHCCECO-INSTALL-SKILL.md) 的 junction hub + `cordis.patch.yml` 热挂载(已在另一台电脑实装验证)。
+
 ```sh
 # 先装共享库,再装插件(开发期本地 checkout 需在包内 pnpm link ../cc-loader)
 dsh plugin --profile <name> add dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents dsh-cc-hooks dsh-cc-mcp
@@ -47,8 +53,9 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-skills dsh-cc-permissions d
 
 ## 验证
 
-- 单元测试:`node --test test/` — 共 **164 用例全绿**(含 loader、agents、hooks、mcp、permissions、plugin、LSP 等)
+- 单元测试:`node --test test/` — 共 **164 用例全绿**(含 loader、agents、hooks、mcp、permissions、plugin、LSP 等;hooks 矩阵由并行工作线维护)
 - 端到端验证:各包自带 smoke test(`packages/cc-mcp/test/mcp-smoke.test.mjs`、`packages/cc-permissions/test/gate.test.mjs`、`packages/cc-skills/test/scope.test.mjs`、`packages/cc-agents/test/persona.test.mjs`)
+- 真实插件实测:obra/superpowers v6.3.0 → 14 技能零警告,`plugin-superpowers-*` 命名空间 + 斜杠调用 + 模型调用全部验证通过
 
 ## License
 
