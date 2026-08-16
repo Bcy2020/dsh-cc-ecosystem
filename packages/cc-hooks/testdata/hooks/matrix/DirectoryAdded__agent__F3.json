@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "DirectoryAdded": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{DirectoryAdded}}",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

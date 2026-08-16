@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{StopFailure}}",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "rate_limit"
+      }
+    ]
+  }
+}

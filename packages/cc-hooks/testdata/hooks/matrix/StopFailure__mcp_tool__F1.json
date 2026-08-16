@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "demo-server",
+            "tool": "notify"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

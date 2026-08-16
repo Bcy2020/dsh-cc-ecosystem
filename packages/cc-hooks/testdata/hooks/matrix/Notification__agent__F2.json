@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{Notification}}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

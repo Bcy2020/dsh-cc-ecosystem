@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{UserPromptExpansion}}",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "deploy"
+      }
+    ]
+  }
+}

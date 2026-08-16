@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/TeammateIdle",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

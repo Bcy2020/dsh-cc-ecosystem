@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{SessionEnd}}",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "clear"
+      }
+    ]
+  }
+}

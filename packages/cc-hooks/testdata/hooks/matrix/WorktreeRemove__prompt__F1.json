@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{WorktreeRemove}}"
+          }
+        ]
+      }
+    ]
+  }
+}

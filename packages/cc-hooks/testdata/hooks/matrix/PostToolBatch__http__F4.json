@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PostToolBatch",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

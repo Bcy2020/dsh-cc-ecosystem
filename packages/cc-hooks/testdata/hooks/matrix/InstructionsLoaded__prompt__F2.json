@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{InstructionsLoaded}}",
+            "timeout": 30
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

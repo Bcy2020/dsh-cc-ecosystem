@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{InstructionsLoaded}}",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

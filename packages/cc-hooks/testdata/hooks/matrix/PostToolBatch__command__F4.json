@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PostToolBatch",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

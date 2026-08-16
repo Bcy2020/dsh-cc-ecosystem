@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PostCompact",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo SubagentStart",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "general-purpose"
+      }
+    ]
+  }
+}

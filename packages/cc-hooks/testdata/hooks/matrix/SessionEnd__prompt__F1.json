@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{SessionEnd}}"
+          }
+        ],
+        "matcher": "clear"
+      }
+    ]
+  }
+}

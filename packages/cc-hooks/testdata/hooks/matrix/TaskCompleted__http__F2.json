@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/TaskCompleted",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

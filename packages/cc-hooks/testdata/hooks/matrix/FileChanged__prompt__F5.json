@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{FileChanged}}",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

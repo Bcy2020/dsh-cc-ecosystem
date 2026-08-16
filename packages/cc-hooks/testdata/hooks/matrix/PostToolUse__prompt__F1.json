@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PostToolUse}}"
+          }
+        ],
+        "matcher": "Bash|Write"
+      }
+    ]
+  }
+}

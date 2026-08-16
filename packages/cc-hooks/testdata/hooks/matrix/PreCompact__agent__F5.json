@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PreCompact}}",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "auto"
+      }
+    ]
+  }
+}

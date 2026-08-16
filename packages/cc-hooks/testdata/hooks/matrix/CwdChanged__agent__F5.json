@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{CwdChanged}}",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

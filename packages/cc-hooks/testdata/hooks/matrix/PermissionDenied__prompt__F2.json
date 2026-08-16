@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PermissionDenied}}",
+            "timeout": 30
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

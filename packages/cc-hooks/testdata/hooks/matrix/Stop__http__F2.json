@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/Stop",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

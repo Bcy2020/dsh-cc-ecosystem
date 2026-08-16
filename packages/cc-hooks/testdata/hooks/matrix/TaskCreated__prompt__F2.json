@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TaskCreated": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{TaskCreated}}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

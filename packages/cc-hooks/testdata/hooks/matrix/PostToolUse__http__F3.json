@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PostToolUse",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PermissionRequest",
+            "timeout": 30
+          }
+        ],
+        "matcher": "Bash|Write"
+      }
+    ]
+  }
+}

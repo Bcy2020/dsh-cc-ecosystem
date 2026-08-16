@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "MessageDisplay": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{MessageDisplay}}",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

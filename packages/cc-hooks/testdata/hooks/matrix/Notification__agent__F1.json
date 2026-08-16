@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{Notification}}"
+          }
+        ]
+      }
+    ]
+  }
+}

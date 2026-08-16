@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Setup": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/Setup"
+          }
+        ]
+      }
+    ]
+  }
+}

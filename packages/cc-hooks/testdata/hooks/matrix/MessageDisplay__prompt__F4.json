@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "MessageDisplay": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{MessageDisplay}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

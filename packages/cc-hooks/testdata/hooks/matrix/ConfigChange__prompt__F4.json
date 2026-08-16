@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{ConfigChange}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

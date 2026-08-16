@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PreCompact",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

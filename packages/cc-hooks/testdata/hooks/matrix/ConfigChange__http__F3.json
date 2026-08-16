@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/ConfigChange",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "project_settings"
+      }
+    ]
+  }
+}

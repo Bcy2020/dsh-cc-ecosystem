@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{Elicitation}}",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/Notification",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo TaskCompleted",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

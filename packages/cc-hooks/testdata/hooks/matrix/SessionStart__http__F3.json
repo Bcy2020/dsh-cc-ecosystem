@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/SessionStart",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

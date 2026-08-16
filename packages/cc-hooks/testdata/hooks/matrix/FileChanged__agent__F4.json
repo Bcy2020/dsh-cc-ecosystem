@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{FileChanged}}",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": ".env"
+      }
+    ]
+  }
+}

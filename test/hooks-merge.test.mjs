@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseHooksConfig, substituteCommand, CLAUDE_EVENTS } from '../packages/cc-hooks/src/parse.js'
+import { parseHooksConfig, substituteCommand, BRIDGE_EVENTS, CC_EVENTS } from '../packages/cc-hooks/src/parse.js'
 import { mergeHookConfigs } from '../packages/cc-hooks/src/merge.js'
 import { discoverHookFiles } from '../packages/cc-hooks/src/discover.js'
 import { mergeHookOutputs, matchesMatcher } from '../packages/cc-hooks/node_modules/@deepseek-ai/dsh-hook-protocol/lib/index.js'
@@ -229,9 +229,11 @@ test('matcher: CC literal pipe alternation, regex, and match-all sentinels', () 
   }
 })
 
-test('events: the 7 mapped events are exactly the official bridge set', () => {
-  assert.deepEqual(CLAUDE_EVENTS, [
+test('events: BRIDGE_EVENTS = the 7 wired events; CC_EVENTS = the full 31 official set', () => {
+  assert.deepEqual(BRIDGE_EVENTS, [
     'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse',
     'Stop', 'SubagentStart', 'SubagentStop',
   ])
+  assert.equal(CC_EVENTS.length, 31)
+  for (const e of BRIDGE_EVENTS) assert.ok(CC_EVENTS.includes(e), `${e} is in the 31`)
 })

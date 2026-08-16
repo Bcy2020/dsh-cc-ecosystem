@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo WorktreeRemove",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

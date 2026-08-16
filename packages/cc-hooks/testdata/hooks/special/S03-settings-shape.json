@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo settings"
+          }
+        ]
+      }
+    ]
+  }
+}

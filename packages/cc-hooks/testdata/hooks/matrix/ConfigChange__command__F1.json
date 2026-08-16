@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo ConfigChange"
+          }
+        ]
+      }
+    ]
+  }
+}

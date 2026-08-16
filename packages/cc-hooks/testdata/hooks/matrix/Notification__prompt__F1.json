@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{Notification}}"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PostToolBatch",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

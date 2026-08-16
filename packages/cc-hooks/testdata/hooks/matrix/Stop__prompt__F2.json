@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{Stop}}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

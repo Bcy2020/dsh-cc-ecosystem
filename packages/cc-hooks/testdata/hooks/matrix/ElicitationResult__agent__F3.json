@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{ElicitationResult}}",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "my-mcp"
+      }
+    ]
+  }
+}

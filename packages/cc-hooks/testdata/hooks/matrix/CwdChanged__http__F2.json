@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/CwdChanged",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PostToolBatch}}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

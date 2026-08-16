@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{UserPromptExpansion}}",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "deploy"
+      }
+    ]
+  }
+}

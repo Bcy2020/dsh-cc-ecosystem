@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{UserPromptSubmit}}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

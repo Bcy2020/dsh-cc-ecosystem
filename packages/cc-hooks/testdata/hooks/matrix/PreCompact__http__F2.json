@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PreCompact",
+            "timeout": 30
+          }
+        ],
+        "matcher": "auto"
+      }
+    ]
+  }
+}

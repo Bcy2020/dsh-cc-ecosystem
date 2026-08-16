@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{ElicitationResult}}"
+          }
+        ]
+      }
+    ]
+  }
+}

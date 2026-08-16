@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SomeFutureEvent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo future"
+          }
+        ]
+      }
+    ]
+  }
+}

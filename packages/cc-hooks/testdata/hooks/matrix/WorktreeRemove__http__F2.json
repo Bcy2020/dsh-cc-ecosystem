@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/WorktreeRemove",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

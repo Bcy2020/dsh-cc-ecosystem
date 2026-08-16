@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo SessionEnd",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "clear"
+      }
+    ]
+  }
+}

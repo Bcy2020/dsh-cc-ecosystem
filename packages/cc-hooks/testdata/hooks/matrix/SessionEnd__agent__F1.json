@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{SessionEnd}}"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

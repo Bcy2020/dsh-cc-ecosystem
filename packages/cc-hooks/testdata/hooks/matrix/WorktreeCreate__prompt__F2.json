@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{WorktreeCreate}}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

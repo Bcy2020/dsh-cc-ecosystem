@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "demo-server",
+            "tool": "notify",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

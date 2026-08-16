@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PostCompact}}"
+          }
+        ],
+        "matcher": "auto"
+      }
+    ]
+  }
+}

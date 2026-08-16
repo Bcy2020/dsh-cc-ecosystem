@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PostToolUse}}",
+            "timeout": 30
+          }
+        ],
+        "matcher": "mcp__.*"
+      }
+    ]
+  }
+}

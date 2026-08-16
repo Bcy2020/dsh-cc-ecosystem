@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{SubagentStart}}"
+          }
+        ],
+        "matcher": "general-purpose"
+      }
+    ]
+  }
+}

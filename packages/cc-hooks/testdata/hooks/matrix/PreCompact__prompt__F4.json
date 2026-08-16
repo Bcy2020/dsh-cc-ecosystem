@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PreCompact}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

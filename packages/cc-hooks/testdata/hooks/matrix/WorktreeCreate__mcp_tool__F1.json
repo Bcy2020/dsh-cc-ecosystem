@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "demo-server",
+            "tool": "notify"
+          }
+        ]
+      }
+    ]
+  }
+}

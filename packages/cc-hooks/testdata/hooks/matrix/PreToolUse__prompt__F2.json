@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PreToolUse}}",
+            "timeout": 30
+          }
+        ],
+        "matcher": "mcp__.*"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PreToolUse",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

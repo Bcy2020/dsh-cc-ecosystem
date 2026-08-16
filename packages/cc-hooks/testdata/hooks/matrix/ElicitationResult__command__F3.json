@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo ElicitationResult",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

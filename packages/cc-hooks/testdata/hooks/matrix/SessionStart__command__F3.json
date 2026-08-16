@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo SessionStart",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "startup"
+      }
+    ]
+  }
+}

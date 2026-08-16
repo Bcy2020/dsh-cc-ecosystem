@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PreCompact}}",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "auto"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PreCompact"
+          }
+        ],
+        "matcher": "auto"
+      }
+    ]
+  }
+}

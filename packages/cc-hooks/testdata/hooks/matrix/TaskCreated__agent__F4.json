@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TaskCreated": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{TaskCreated}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

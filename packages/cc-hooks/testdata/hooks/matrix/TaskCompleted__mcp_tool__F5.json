@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "demo-server",
+            "tool": "notify",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

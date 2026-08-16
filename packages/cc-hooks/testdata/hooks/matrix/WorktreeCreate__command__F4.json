@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo WorktreeCreate",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

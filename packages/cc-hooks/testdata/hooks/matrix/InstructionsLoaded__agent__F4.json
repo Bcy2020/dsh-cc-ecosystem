@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{InstructionsLoaded}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PermissionDenied",
+            "timeout": 30
+          }
+        ],
+        "matcher": "mcp__.*"
+      }
+    ]
+  }
+}

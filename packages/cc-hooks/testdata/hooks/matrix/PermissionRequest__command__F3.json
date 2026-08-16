@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PermissionRequest",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

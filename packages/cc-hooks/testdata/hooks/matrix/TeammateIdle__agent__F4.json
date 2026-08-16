@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{TeammateIdle}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

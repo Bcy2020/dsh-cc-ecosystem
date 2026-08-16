@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/SubagentStop",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

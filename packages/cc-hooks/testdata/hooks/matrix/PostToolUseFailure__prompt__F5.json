@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PostToolUseFailure}}",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "mcp__.*"
+      }
+    ]
+  }
+}

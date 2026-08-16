@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{CwdChanged}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

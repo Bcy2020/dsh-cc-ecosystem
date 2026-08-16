@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo SessionEnd"
+          }
+        ],
+        "matcher": "clear"
+      }
+    ]
+  }
+}

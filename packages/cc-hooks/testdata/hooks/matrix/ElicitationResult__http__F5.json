@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/ElicitationResult",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "my-mcp"
+      }
+    ]
+  }
+}

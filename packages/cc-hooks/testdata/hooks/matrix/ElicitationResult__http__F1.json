@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/ElicitationResult"
+          }
+        ],
+        "matcher": "my-mcp"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PostCompact",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "auto"
+      }
+    ]
+  }
+}

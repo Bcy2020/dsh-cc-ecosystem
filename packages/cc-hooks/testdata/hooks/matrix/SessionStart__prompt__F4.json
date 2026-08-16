@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{SessionStart}}",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "startup"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PostToolUse}}",
+            "timeout": 30
+          }
+        ],
+        "matcher": "Bash|Write"
+      }
+    ]
+  }
+}

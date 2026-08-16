@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PermissionRequest}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

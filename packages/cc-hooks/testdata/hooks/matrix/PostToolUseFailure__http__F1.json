@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PostToolUseFailure"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

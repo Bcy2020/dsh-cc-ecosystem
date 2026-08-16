@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PermissionDenied"
+          }
+        ],
+        "matcher": "Bash|Write"
+      }
+    ]
+  }
+}

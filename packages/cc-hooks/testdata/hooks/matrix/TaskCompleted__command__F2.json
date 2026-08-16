@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo TaskCompleted",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

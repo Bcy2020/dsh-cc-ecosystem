@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{Elicitation}}"
+          }
+        ]
+      }
+    ]
+  }
+}

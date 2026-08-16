@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{WorktreeCreate}}"
+          }
+        ]
+      }
+    ]
+  }
+}

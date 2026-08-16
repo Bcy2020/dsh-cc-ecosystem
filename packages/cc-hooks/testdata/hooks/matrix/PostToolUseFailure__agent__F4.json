@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PostToolUseFailure}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

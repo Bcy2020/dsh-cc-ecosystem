@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "DirectoryAdded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo DirectoryAdded",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

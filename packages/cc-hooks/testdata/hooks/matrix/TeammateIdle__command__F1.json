@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo TeammateIdle"
+          }
+        ]
+      }
+    ]
+  }
+}

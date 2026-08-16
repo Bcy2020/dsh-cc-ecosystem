@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/UserPromptSubmit",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

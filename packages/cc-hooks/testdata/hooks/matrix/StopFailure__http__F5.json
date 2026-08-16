@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/StopFailure",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "rate_limit"
+      }
+    ]
+  }
+}

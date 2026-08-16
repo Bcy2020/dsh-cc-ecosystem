@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/Elicitation"
+          }
+        ]
+      }
+    ]
+  }
+}

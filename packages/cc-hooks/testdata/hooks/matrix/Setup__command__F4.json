@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Setup": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo Setup",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

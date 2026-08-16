@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo CwdChanged",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

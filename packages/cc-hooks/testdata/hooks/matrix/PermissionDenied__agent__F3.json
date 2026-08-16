@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PermissionDenied}}",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "Bash|Write"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo SubagentStop"
+          }
+        ],
+        "matcher": "^code-reviewer$"
+      }
+    ]
+  }
+}

@@ -1,24 +1,45 @@
 // parse.js — Claude Code hooks.json → protocol MatcherGroups.
 //
 // Reimplements the official bridge's config parser
-// (@deepseek-ai/dsh-hooks-claude-code/config) with identical semantics — event
-// whitelist, command-only hooks, matcher validation, ${CLAUDE_*} substitution —
-// WITHOUT depending on the bridge plugin itself. The wire-level types, matcher
-// engine, runner and merge live in @deepseek-ai/dsh-hook-protocol, which the
-// host ships in the same version line.
+// (@deepseek-ai/dsh-hooks-claude-code/config) with identical semantics —
+// command-only hooks, matcher validation, ${CLAUDE_*} substitution — extended
+// to the FULL 31-event official surface: every known CC event parses into the
+// config IR, while only the 7 bridge-wired events are ever executed (the other
+// 24 have no DSH extension point yet, so their hooks sit parsed-but-inert,
+// ready for a future wiring batch). The wire-level types, matcher engine,
+// runner and merge live in @deepseek-ai/dsh-hook-protocol, which the host ships
+// in the same version line.
 
 import { matcherDiagnostic } from '@deepseek-ai/dsh-hook-protocol'
 
-/** The 7 events the official bridge maps; anything else is ignored (never fatal). */
-export const CLAUDE_EVENTS = [
-  'SessionStart',
-  'UserPromptSubmit',
-  'PreToolUse',
-  'PostToolUse',
-  'Stop',
-  'SubagentStart',
-  'SubagentStop',
+/** All 31 official CC hook events (code.claude.com/docs/en/hooks.md). */
+export const CC_EVENTS = [
+  'SessionStart', 'Setup', 'UserPromptSubmit', 'UserPromptExpansion',
+  'PreToolUse', 'PermissionRequest', 'PermissionDenied', 'PostToolUse',
+  'PostToolUseFailure', 'PostToolBatch', 'Notification', 'MessageDisplay',
+  'SubagentStart', 'SubagentStop', 'TaskCreated', 'TaskCompleted', 'Stop',
+  'StopFailure', 'TeammateIdle', 'InstructionsLoaded', 'ConfigChange',
+  'CwdChanged', 'DirectoryAdded', 'FileChanged', 'WorktreeCreate',
+  'WorktreeRemove', 'PreCompact', 'PostCompact', 'Elicitation',
+  'ElicitationResult', 'SessionEnd',
 ]
+
+/** The 7 events the official bridge maps to DSH extension points (the wired set). */
+export const BRIDGE_EVENTS = [
+  'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop',
+  'SubagentStart', 'SubagentStop',
+]
+
+/**
+ * Events with no matcher subject (CC: a matcher there is silently ignored):
+ * UserPromptSubmit / PostToolBatch / Stop / TeammateIdle / TaskCreated /
+ * TaskCompleted / WorktreeCreate / WorktreeRemove / MessageDisplay / CwdChanged.
+ */
+const NO_MATCHER_EVENTS = new Set([
+  'UserPromptSubmit', 'PostToolBatch', 'Stop', 'TeammateIdle',
+  'TaskCreated', 'TaskCompleted', 'WorktreeCreate', 'WorktreeRemove',
+  'MessageDisplay', 'CwdChanged',
+])
 
 /**
  * Apply `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PROJECT_DIR}` substitution to a
@@ -64,7 +85,7 @@ export function parseHooksConfig(raw, vars = {}) {
   const hooksMap = root ? asObject(root.hooks) ?? root : undefined
   if (!hooksMap) return { config, skipped }
 
-  for (const event of CLAUDE_EVENTS) {
+  for (const event of CC_EVENTS) {
     const rawGroups = hooksMap[event]
     if (!Array.isArray(rawGroups)) continue
     const groups = []
@@ -84,10 +105,16 @@ export function parseHooksConfig(raw, vars = {}) {
         commands.push({
           command: substituteCommand(hook.command, vars),
           ...(typeof hook.timeout === 'number' ? { timeoutSec: hook.timeout } : {}),
+          // Pass through generic fields for later layers (the wire protocol's
+          // CommandHook only consumes command/timeoutSec; the extras ride along
+          // in the IR so a future if-filter / statusMessage consumer can use
+          // them without re-parsing).
+          ...(typeof hook.if === 'string' ? { if: hook.if } : {}),
+          ...(typeof hook.statusMessage === 'string' ? { statusMessage: hook.statusMessage } : {}),
         })
       }
       if (commands.length === 0) continue
-      const matcher = event === 'UserPromptSubmit' || event === 'Stop'
+      const matcher = NO_MATCHER_EVENTS.has(event)
         ? undefined
         : typeof group.matcher === 'string' ? group.matcher : undefined
       const diagnostic = matcherDiagnostic(matcher, 'claude-code')

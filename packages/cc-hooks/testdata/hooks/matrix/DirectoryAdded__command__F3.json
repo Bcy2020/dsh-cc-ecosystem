@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "DirectoryAdded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo DirectoryAdded",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

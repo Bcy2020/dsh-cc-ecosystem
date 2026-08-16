@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{FileChanged}}",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

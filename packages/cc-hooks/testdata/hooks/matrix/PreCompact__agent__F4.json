@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PreCompact}}",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "auto"
+      }
+    ]
+  }
+}

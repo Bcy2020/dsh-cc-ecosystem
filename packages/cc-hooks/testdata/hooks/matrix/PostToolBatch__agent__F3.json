@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PostToolBatch}}",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

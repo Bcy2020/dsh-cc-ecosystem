@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/ConfigChange",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "project_settings"
+      }
+    ]
+  }
+}

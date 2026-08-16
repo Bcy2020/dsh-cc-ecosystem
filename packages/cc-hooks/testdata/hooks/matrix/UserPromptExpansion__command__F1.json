@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo UserPromptExpansion"
+          }
+        ],
+        "matcher": "deploy"
+      }
+    ]
+  }
+}

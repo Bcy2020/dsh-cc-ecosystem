@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo WorktreeRemove",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

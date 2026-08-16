@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PostToolUseFailure",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

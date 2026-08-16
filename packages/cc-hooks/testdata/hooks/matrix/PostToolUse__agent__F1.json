@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PostToolUse}}"
+          }
+        ],
+        "matcher": "mcp__.*"
+      }
+    ]
+  }
+}

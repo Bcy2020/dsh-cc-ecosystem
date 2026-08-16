@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo StopFailure",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{StopFailure}}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

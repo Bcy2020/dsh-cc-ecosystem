@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{ConfigChange}}",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "project_settings"
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{StopFailure}}"
+          }
+        ]
+      }
+    ]
+  }
+}

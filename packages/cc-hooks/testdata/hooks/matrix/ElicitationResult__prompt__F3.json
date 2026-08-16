@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{ElicitationResult}}",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

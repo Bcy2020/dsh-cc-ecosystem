@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Setup": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{Setup}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

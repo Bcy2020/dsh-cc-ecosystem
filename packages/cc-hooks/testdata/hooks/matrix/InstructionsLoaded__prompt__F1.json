@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{InstructionsLoaded}}"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo TeammateIdle",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/SubagentStart",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "^code-reviewer$"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/WorktreeCreate",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

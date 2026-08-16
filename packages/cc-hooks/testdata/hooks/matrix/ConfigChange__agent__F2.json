@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{ConfigChange}}",
+            "timeout": 30
+          }
+        ],
+        "matcher": "project_settings"
+      }
+    ]
+  }
+}

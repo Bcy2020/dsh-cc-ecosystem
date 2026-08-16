@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{TeammateIdle}}",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

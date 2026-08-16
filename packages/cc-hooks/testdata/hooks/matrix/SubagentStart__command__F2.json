@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo SubagentStart",
+            "timeout": 30
+          }
+        ],
+        "matcher": "general-purpose"
+      }
+    ]
+  }
+}

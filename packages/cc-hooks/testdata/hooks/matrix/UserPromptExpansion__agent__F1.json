@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{UserPromptExpansion}}"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

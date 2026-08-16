@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/PermissionRequest",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "Bash|Write"
+      }
+    ]
+  }
+}

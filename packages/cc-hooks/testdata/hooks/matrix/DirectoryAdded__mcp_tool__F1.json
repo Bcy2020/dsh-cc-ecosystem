@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "DirectoryAdded": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "demo-server",
+            "tool": "notify"
+          }
+        ],
+        "matcher": "slash_command"
+      }
+    ]
+  }
+}

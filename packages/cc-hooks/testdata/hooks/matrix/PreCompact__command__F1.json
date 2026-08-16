@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PreCompact"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{WorktreeRemove}}"
+          }
+        ]
+      }
+    ]
+  }
+}

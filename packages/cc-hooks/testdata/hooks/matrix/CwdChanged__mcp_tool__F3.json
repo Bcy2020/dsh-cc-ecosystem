@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "demo-server",
+            "tool": "notify",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

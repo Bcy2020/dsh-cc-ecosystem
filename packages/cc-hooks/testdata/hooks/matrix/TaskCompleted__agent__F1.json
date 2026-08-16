@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{TaskCompleted}}"
+          }
+        ]
+      }
+    ]
+  }
+}

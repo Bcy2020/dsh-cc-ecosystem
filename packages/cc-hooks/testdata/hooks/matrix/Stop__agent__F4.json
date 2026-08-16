@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{Stop}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

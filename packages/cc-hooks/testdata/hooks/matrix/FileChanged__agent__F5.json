@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{FileChanged}}",
+            "timeout": 30,
+            "if": "Bash(git *)",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": ".env"
+      }
+    ]
+  }
+}

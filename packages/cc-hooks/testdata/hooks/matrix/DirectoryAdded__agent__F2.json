@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "DirectoryAdded": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{DirectoryAdded}}",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

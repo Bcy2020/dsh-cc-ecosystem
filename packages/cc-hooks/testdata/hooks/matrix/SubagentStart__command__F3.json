@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo SubagentStart",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "general-purpose"
+      }
+    ]
+  }
+}

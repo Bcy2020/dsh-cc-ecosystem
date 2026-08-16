@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo a"
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.*__write.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo b"
+          }
+        ]
+      }
+    ]
+  }
+}

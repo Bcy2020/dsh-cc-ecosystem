@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{StopFailure}}",
+            "timeout": 30
+          }
+        ],
+        "matcher": "rate_limit"
+      }
+    ]
+  }
+}

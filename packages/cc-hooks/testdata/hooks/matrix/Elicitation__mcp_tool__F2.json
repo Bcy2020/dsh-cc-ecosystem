@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "demo-server",
+            "tool": "notify",
+            "timeout": 30
+          }
+        ],
+        "matcher": "my-mcp"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{CwdChanged}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

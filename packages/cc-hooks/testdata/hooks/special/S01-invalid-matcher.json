@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "(unclosed",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo x"
+          }
+        ]
+      }
+    ]
+  }
+}

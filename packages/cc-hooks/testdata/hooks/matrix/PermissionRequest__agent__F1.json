@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{PermissionRequest}}"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

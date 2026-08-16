@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{PreToolUse}}",
+            "if": "Bash(git *)"
+          }
+        ],
+        "matcher": "mcp__.*"
+      }
+    ]
+  }
+}

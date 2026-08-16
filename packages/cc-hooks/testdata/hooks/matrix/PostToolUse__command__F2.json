@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PostToolUse",
+            "timeout": 30
+          }
+        ],
+        "matcher": "mcp__.*"
+      }
+    ]
+  }
+}

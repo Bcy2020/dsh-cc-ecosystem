@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/FileChanged"
+          }
+        ],
+        "matcher": ".env"
+      }
+    ]
+  }
+}

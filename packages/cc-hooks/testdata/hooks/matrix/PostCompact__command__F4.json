@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo PostCompact",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "auto"
+      }
+    ]
+  }
+}

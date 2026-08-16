@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{TaskCompleted}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

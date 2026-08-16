@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "MessageDisplay": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{MessageDisplay}}",
+            "if": "Bash(git *)"
+          }
+        ]
+      }
+    ]
+  }
+}

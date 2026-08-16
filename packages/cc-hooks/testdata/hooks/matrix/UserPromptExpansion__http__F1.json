@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/UserPromptExpansion"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

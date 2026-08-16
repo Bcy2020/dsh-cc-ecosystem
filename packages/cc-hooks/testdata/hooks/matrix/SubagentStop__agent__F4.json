@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{SubagentStop}}",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

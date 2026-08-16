@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "verify: {{SessionStart}}"
+          }
+        ],
+        "matcher": "*"
+      }
+    ]
+  }
+}

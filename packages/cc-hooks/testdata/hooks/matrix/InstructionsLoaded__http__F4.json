@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://example.com/hook/InstructionsLoaded",
+            "statusMessage": "hook running"
+          }
+        ]
+      }
+    ]
+  }
+}

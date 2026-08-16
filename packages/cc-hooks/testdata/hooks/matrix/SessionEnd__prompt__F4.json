@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "evaluate: {{SessionEnd}}",
+            "statusMessage": "hook running"
+          }
+        ],
+        "matcher": "clear"
+      }
+    ]
+  }
+}
