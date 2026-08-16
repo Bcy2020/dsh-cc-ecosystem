@@ -132,7 +132,7 @@ test('pre-execute: disallowed tool denied while skill active', async () => {
   }
 })
 
-test('pre-step: activation cleared on the next user message (CC semantics)', async () => {
+test('turn-stopping: activation cleared at round end (CC: next message sees tools again)', async () => {
   const ctx = new Context()
   const cwd = await fixture()
   try {
@@ -149,13 +149,14 @@ test('pre-step: activation cleared on the next user message (CC semantics)', asy
     }, () => Promise.resolve({ kind: 'allow' }))
     assert.equal(denied.kind, 'deny', 'round 1: disallowed tool denied')
 
-    // Round 2: a fresh user message (non-empty pre-step batch) clears the scope.
-    await ctx.waterfall('agent/pre-step', { agent, messages: [{ source: { kind: 'user' }, content: [] }] },
-      () => Promise.resolve({ kind: 'enter', messages: [{ source: { kind: 'user' }, content: [] }] }))
+    // Round 1 ends → agent/turn-stopping clears the scope. The model-facing
+    // tool list for the NEXT round is assembled AFTER this, so the tools are
+    // visible again from the very next user message (CC semantics).
+    ctx.emit('agent/turn-stopping', { agent })
     const after = await ctx.waterfall('tools/pre-execute', {
       agent, name: 'edit', arguments: { file_path: '/x' },
     }, () => Promise.resolve({ kind: 'allow' }))
-    assert.equal(after.kind, 'allow', 'round 2: scope cleared on user message, edit allowed again')
+    assert.equal(after.kind, 'allow', 'round 2: scope cleared at turn end, edit allowed again')
   } finally {
     await rm(cwd, { recursive: true, force: true })
   }
@@ -173,7 +174,8 @@ test('pre-step: empty batch (tool continuation) keeps the scope active', async (
       agent, name: 'skill', arguments: { name: 'scoped' },
     }, () => Promise.resolve({ kind: 'allow' }))
 
-    // A tool-continuation step has an empty claimed batch: scope stays active.
+    // A tool-continuation step (empty claimed batch, no turn end) keeps the
+    // scope active.
     await ctx.waterfall('agent/pre-step', { agent, messages: [] },
       () => Promise.resolve({ kind: 'enter', messages: [] }))
     const stillDenied = await ctx.waterfall('tools/pre-execute', {
