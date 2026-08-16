@@ -330,21 +330,23 @@ test('batch-A: WIRED_EVENTS covers the 11 wired events', () => {
   ])
 })
 
-test('demo hooks.json: 14 command hooks across 11 events + 4 non-command types skipped', async () => {
+test('demo hooks.json: 19 hooks across 11 events — all five handler types parse, nothing skipped', async () => {
   const { readFileSync } = await import('node:fs')
   const { parseHooksConfig } = await import('../packages/cc-hooks/src/parse.js')
   const raw = JSON.parse(readFileSync(join(demoRoot, '.claude', 'hooks', 'hooks.json'), 'utf8'))
   const { config, skipped } = parseHooksConfig(raw)
 
-  // 11 events carry command hooks; every wired event is present.
+  // 12 events carry hooks (the 11 wired plus Notification, whose http hook is
+  // parsed-but-inert — Notification has no DSH extension point); every wired
+  // event is present.
   const events = Object.keys(config)
-  assert.equal(events.length, 11)
+  assert.equal(events.length, 12)
   for (const ev of WIRED_EVENTS) assert.ok(events.includes(ev), `wired event ${ev} configured in demo`)
 
-  // 14 command entries (PreToolUse has 4: guard + if-guarded bash observe +
-  // if-guarded pwsh observe + file-tool observe).
+  // 19 entries = 14 command + http (PreToolUse, Notification) + mcp_tool
+  // (PostToolUse) + prompt (UserPromptSubmit) + agent (Stop).
   const count = events.reduce((n, ev) => n + config[ev].reduce((m, g) => m + g.hooks.length, 0), 0)
-  assert.equal(count, 14)
+  assert.equal(count, 19)
 
   // The `if` fields survive parsing on the guarded observe hooks (bash rm +
   // pwsh Remove-Item, matching CC's two-handler-per-tool pattern).
@@ -357,11 +359,14 @@ test('demo hooks.json: 14 command hooks across 11 events + 4 non-command types s
   assert.deepEqual(matchers, ['Bash|PowerShell', 'Read|Edit|Write'])
   assert.equal(config.PostToolUse[0].matcher, 'bash|pwsh')
 
-  // All four non-command types are skipped with a warning, never fatal.
-  assert.deepEqual(skipped.sort((a, b) => a.event.localeCompare(b.event)), [
-    { event: 'Notification', type: 'http' },
-    { event: 'PostToolUse', type: 'mcp_tool' },
-    { event: 'Stop', type: 'agent' },
-    { event: 'UserPromptExpansion', type: 'prompt' },
-  ])
+  // All five handler types survive parsing on their events.
+  assert.ok(preTool.some((h) => h.type === 'http' && h.url === 'http://127.0.0.1:8787/hooks/pre-tool-use' && h.timeoutSec === 5))
+  assert.ok(config.Notification[0].hooks.some((h) => h.type === 'http'))
+  assert.ok(config.PostToolUse.flatMap((g) => g.hooks).some((h) => h.type === 'mcp_tool' && h.server === 'demo' && h.tool === 'notify'))
+  assert.ok(config.UserPromptSubmit[0].hooks.some((h) => h.type === 'prompt'))
+  assert.ok(config.Stop[0].hooks.some((h) => h.type === 'agent'))
+
+  // Every demo combination is inside the official event × type matrix: nothing
+  // is skipped with a warning anymore.
+  assert.deepEqual(skipped, [])
 })

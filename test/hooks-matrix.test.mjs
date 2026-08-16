@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseHooksConfig } from '../packages/cc-hooks/src/parse.js'
+import { parseHooksConfig, EVENT_TYPE_SUPPORT } from '../packages/cc-hooks/src/parse.js'
 
 const DATA = join('packages', 'cc-hooks', 'testdata', 'hooks')
 const matrixDir = join(DATA, 'matrix')
@@ -59,8 +59,25 @@ test(`matrix: all ${465} fixtures parse without throwing and classify correctly`
       if (variant === 'F2' || variant === 'F5') assert.equal(out.timeoutSec, 30, `${file}: timeout → timeoutSec`)
       if (variant === 'F3' || variant === 'F5') assert.equal(out.if, 'Bash(git *)', `${file}: if passed through`)
       if (variant === 'F4' || variant === 'F5') assert.equal(out.statusMessage, 'hook running', `${file}: statusMessage passed through`)
+    } else if (EVENT_TYPE_SUPPORT.get(event)?.has(type)) {
+      // Batch B: non-command hooks on a SUPPORTED event×type combination parse
+      // into typed IR with their type-specific fields + variant fields.
+      assert.ok(parsed.config[event]?.[0]?.hooks?.[0], `${file}: ${type} hook in config`)
+      const out = parsed.config[event][0].hooks[0]
+      assert.equal(out.type, type, `${file}: type preserved`)
+      if (type === 'http') assert.equal(out.url, `https://example.com/hook/${event}`, `${file}: http url`)
+      if (type === 'mcp_tool') {
+        assert.equal(out.server, 'demo-server', `${file}: mcp_tool server`)
+        assert.equal(out.tool, 'notify', `${file}: mcp_tool tool`)
+      }
+      if (type === 'prompt') assert.equal(out.prompt, `evaluate: {{${event}}}`, `${file}: prompt text`)
+      if (type === 'agent') assert.equal(out.prompt, `verify: {{${event}}}`, `${file}: agent prompt`)
+      if (variant === 'F2' || variant === 'F5') assert.equal(out.timeoutSec, 30, `${file}: timeout → timeoutSec`)
+      if (variant === 'F3' || variant === 'F5') assert.equal(out.if, 'Bash(git *)', `${file}: if passed through`)
+      if (variant === 'F4' || variant === 'F5') assert.equal(out.statusMessage, 'hook running', `${file}: statusMessage passed through`)
     } else {
-      // other types are parsed-and-skipped, never fatal.
+      // Outside the official event × type matrix → skipped with a warning,
+      // never fatal (same classification the parse layer reports).
       assert.ok(parsed.skipped.some((s) => s.event === event && s.type === type), `${file}: ${type} hook reported skipped`)
     }
   }
@@ -84,9 +101,11 @@ test('special: fixtures land in their documented class (S01..S12)', () => {
   const s3 = parseHooksConfig(JSON.parse(read('S03-settings-shape.json')))
   assert.equal(s3.config.PreToolUse[0].hooks[0].command, 'echo settings')
 
-  // S04 http hook without url → skipped, not fatal
+  // S04 http hook without url → dropped as malformed (missing its required
+  // field), not fatal — and NOT reported skipped.
   const s4 = parseHooksConfig(JSON.parse(read('S04-http-no-url.json')))
-  assert.ok(s4.skipped.some((s) => s.type === 'http'))
+  assert.deepEqual(s4.config, {})
+  assert.equal(s4.skipped.length, 0)
 
   // S05 UserPromptSubmit matcher is discarded
   const s5 = parseHooksConfig(JSON.parse(read('S05-prompt-submit-matcher-ignored.json')))

@@ -1,8 +1,8 @@
 # dsh-cc-hooks
 
-Run **unmodified Claude Code command hooks** in DeepSeek Harness, with
-**per-session / per-plugin discovery** — the gap the official bridge
-(`@deepseek-ai/dsh-hooks-claude-code`) leaves open (its `configPath` is
+Run **unmodified Claude Code hooks** (all five handler types) in DeepSeek
+Harness, with **per-session / per-plugin discovery** — the gap the official
+bridge (`@deepseek-ai/dsh-hooks-claude-code`) leaves open (its `configPath` is
 process-level, read once at load; its own source carries the
 `TODO(per-session-hook-config)`).
 
@@ -11,7 +11,7 @@ process-level, read once at load; its own source carries the
 | 包名 | `dsh-cc-hooks` |
 | 依赖 | `@deepseek-ai/dsh-hook-protocol`(官方共享协议层,peer)、`dsh-cc-loader`(file: 共享解析层) |
 | 事件 | 11/31:官方 7 映射集 + 批次 A 扩展 —— SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / PostToolUseFailure / Stop / SubagentStart / SubagentStop / SessionEnd / PreCompact / PostCompact |
-| 动作类型 | `command` 型(其余 http/mcp_tool/prompt/agent 解析即跳过 + 警告,与官方桥一致) |
+| 动作类型 | 全部 5 类执行:`command` / `http` / `mcp_tool` / `prompt` / `agent`(批次 B);事件×类型落在官方支持矩阵之外 → 解析即跳过 + 警告,能力缺失(tools/llm 服务、subagent 工具、模型路由)→ 警告 + 非阻断,永不崩溃 |
 | 宿主 DSH | 0.1.0-rc.x(协议 peer 钉 `0.1.0-rc.6`,npm 无 rc.5 发布) |
 
 ## 它做什么
@@ -99,7 +99,7 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-hooks
         "matcher": "Bash|Write",        // 可选;默认匹配所有;多值用 | 分隔
         "hooks": [
           { "type": "command", "command": "node scripts/guard.mjs", "timeout": 10000 }
-          // type 还可能是 http / mcp_tool / prompt / agent —— 解析即跳过 + 警告
+          // type 还可能是 http / mcp_tool / prompt / agent —— 全部执行(批次 B)
         ]
       }
     ],
@@ -110,8 +110,31 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-hooks
 }
 ```
 
-31 个事件中,协议只跑 command 型且只跑已接线的 11 个(`WIRED_EVENTS`);其余
-20 个事件名在 JSON 里是普通 key,解析通过但暂不执行(parsed-but-inert)。
+31 个事件中,已接线的 11 个(`WIRED_EVENTS`)全类型执行;其余 20 个事件名在
+JSON 里是普通 key,解析通过但暂不执行(parsed-but-inert)。
+
+### 批次 B:http / mcp_tool / prompt / agent 执行语义(官方)
+
+| type | 输入 | 输出 | 阻断 | 默认超时 |
+|---|---|---|---|---|
+| `command` | payload JSON → stdin | exit 0 stdout JSON / exit 2 stderr | exit 2 / JSON 决策 | 600s(UserPromptSubmit 30s) |
+| `http` | payload JSON → POST body | 2xx JSON object body 按 command 规则解析 | 仅 2xx + JSON 决策;**状态码不能阻断** | 600s(UserPromptSubmit 30s) |
+| `mcp_tool` | `input` 字符串值支持 `${tool_input.x}` 替换 | 工具文本按 exit-0 stdout 规则解析 | 文本 JSON 决策 | 600s(UserPromptSubmit 30s) |
+| `prompt` | `$ARGUMENTS` 替换 payload → 单轮 LLM | `{"ok": true}` / `{"ok": false, "reason"}` | ok=false 阻断 | 30s |
+| `agent` | 同 prompt → subagent(默认关 background,等前台答案) | 同上 | ok=false 阻断 | 60s |
+
+- http 失败(非 2xx / 非 JSON 体 / 连接失败 / 超时)→ 非阻断错误,继续;`headers`
+  值支持 `$VAR`/`${VAR}` 插值,仅 `allowedEnvVars` 白名单内变量被解析,未列入 → 空串
+- mcp_tool 直接调用已注册工具的 `ToolDefinition`(绕过工具事件管线,避免钩子
+  递归触发自身);server/tool 未连接或 isError → 非阻断错误。`server:
+  "plugin:<plugin>:<server>"` 映射到 scoped 名 `mcp__plugin_<plugin>_<server>__<tool>`
+- prompt/agent 返回非 `{ok}` JSON → 非阻断错误;模型可包 ```json 代码围栏
+- **能力缺失降级**:无 tools/llm 服务、无 subagent 工具、无模型路由(既无
+  `hook.model` 也无 agent 模型)→ 警告 + 非阻断,永不崩溃
+- 事件×类型支持矩阵(`EVENT_TYPE_SUPPORT`,官方):SessionStart/Setup 仅
+  command/mcp_tool;14 个 observe 事件(SessionEnd/PreCompact/PostCompact/
+  SubagentStart/Notification/MessageDisplay/DirectoryAdded 等)无 prompt/agent;
+  其余 11 个事件 5 类全支持。不支持组合 → 解析即跳过 + 警告
 
 ### 批次 A 新增接线
 
@@ -155,14 +178,15 @@ DSH 的 shell 工具把非零退出码渲染成 `[exit code: N]` 标记、`resul
 ## 测试
 
 ```sh
-node --test test/hooks-merge.test.mjs test/hooks-integration.mjs test/hooks-matrix.test.mjs test/hooks-batch-a.test.mjs
+node --test test/hooks-merge.test.mjs test/hooks-integration.mjs test/hooks-matrix.test.mjs test/hooks-batch-a.test.mjs test/hooks-executors.test.mjs
 ```
 
-覆盖:解析(settings/bare 形态、非 command 跳过、非法 matcher 抛错)、
+覆盖:解析(settings/bare 形态、事件×类型矩阵、非法 matcher 抛错)、
 `${CLAUDE_*}` 替换、三来源发现(项目/全局/插件)、跨源合并、协议折叠
 (deny>ask>allow)、matcher 语义、60% 语法矩阵(465 + 12 特殊)、批次 A(`if`
 过滤语义、PostToolUseFailure 分支、SessionEnd 顶层会话、PreCompact/PostCompact
-manual/auto)。
+manual/auto)、批次 B(http 本地服务器实测、mcp_tool 直调、prompt/agent `{ok}`
+解码、能力缺失降级、runPoint 分发集成)。
 
 ## License
 

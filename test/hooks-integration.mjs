@@ -132,13 +132,15 @@ test('integration: PreToolUse denies rm, passes git status; PostToolUse injects 
     assert.ok(note, 'PostToolUse context must be injected with the cc-hooks source')
     assert.match(note.content.map((b) => b.text).join(''), /\[hook note\]/)
 
-    // UserPromptSubmit: no hook configured → pure pass-through.
+    // UserPromptSubmit: demo config has a context-note hook → context appended
+    // to the downstream enter decision.
     const preStep = await L['agent/pre-step'](
       { agent, messages: [{ content: [{ type: 'text', text: 'hi' }] }], turn: 1, signal: new AbortController().signal },
       async () => ({ kind: 'enter', messages: [{ content: [{ type: 'text', text: 'hi' }] }] }),
     )
     assert.equal(preStep.kind, 'enter')
-    assert.equal(preStep.messages.length, 1, 'no context appended when no UserPromptSubmit hook ran')
+    assert.equal(preStep.messages.length, 2, 'UserPromptSubmit context note appended')
+    assert.match(preStep.messages[1].content.map((b) => b.text).join(''), /\[hook note\] UserPromptSubmit/)
 
     // Per-session cache: a second session on the same cwd reuses the entry.
     const agent2 = makeAgent(demoRoot, 'sess-2')

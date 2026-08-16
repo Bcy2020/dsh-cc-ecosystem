@@ -37,7 +37,7 @@ test('parse: bare event map and settings {hooks} shape both parse', () => {
   }
 })
 
-test('parse: non-command hooks are skipped, unknown events and malformed entries ignored', () => {
+test('parse: unsupported event×type combos skipped; unknown events and malformed entries ignored', () => {
   const raw = {
     PreToolUse: [
       { matcher: 'Bash', hooks: [
@@ -48,15 +48,19 @@ test('parse: non-command hooks are skipped, unknown events and malformed entries
         42,                  // not an object → ignored
       ] },
     ],
-    SomeFutureEvent: [{ hooks: [{ type: 'command', command: 'future.sh' }] }], // not in the 7 → ignored
+    // http is unsupported on SessionStart (command/mcp_tool only) → skipped.
+    SessionStart: [{ hooks: [{ type: 'http', url: 'https://example.com' }] }],
+    SomeFutureEvent: [{ hooks: [{ type: 'command', command: 'future.sh' }] }], // not in the 31 → ignored
   }
   const { config, skipped } = parseHooksConfig(raw)
   assert.deepEqual(skipped, [
-    { event: 'PreToolUse', type: 'http' },
-    { event: 'PreToolUse', type: 'prompt' },
+    { event: 'SessionStart', type: 'http' },
   ])
-  assert.equal(config.PreToolUse[0].hooks.length, 1)
+  // PreToolUse keeps command + http + prompt — all three are supported there.
+  assert.deepEqual(config.PreToolUse[0].hooks.map((h) => h.type), ['command', 'http', 'prompt'])
   assert.equal(config.PreToolUse[0].hooks[0].command, 'ok.sh')
+  assert.equal(config.PreToolUse[0].hooks[1].url, 'https://example.com')
+  assert.equal(config.PreToolUse[0].hooks[2].prompt, 'x')
   assert.equal(config.SomeFutureEvent, undefined)
 })
 

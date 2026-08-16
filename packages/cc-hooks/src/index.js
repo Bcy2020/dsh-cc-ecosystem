@@ -1,4 +1,4 @@
-// cc-hooks — run unmodified Claude Code command hooks in DSH with per-session
+// cc-hooks — run unmodified Claude Code hooks in DSH with per-session
 // discovery: project `.claude/hooks/hooks.json` + global `~/.claude/hooks/`
 // + each plugin dir's `hooks/hooks.json`, merged and executed through
 // @deepseek-ai/dsh-hook-protocol.
@@ -13,9 +13,15 @@
 // project/user/plugin sources, so a hooks.json edit is picked up by the next
 // session and each plugin runs its own hooks.
 //
+// All five official handler types execute (command / http / mcp_tool / prompt
+// / agent) via the executors in executors.js; an event × type combination
+// outside the official support matrix is skipped with a warning at parse time,
+// and a missing runtime capability (no tools/llm service, no subagent tool,
+// no model route) degrades to a warning + neutral outcome, never a crash.
+//
 // 11/31 events run (7 bridge-wired + PostToolUseFailure, SessionEnd,
-// PreCompact, PostCompact), command-type hooks only; non-command types and
-// unknown events are skipped with a warning, never fatal.
+// PreCompact, PostCompact); the other 20 have no DSH extension point yet, so
+// their hooks sit parsed-but-inert.
 
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
@@ -34,6 +40,13 @@ import { parseHooksConfig, substituteCommand } from './parse.js'
 import { discoverHookFiles } from './discover.js'
 import { mergeHookConfigs } from './merge.js'
 import { IF_EVENTS, matchesIf } from './if-filter.js'
+import {
+  defaultTimeoutMsFor,
+  runAgentHook,
+  runHttpHook,
+  runMcpToolHook,
+  runPromptHook,
+} from './executors.js'
 import { ccBucket } from 'dsh-cc-loader'
 
 export const name = 'cc-hooks'
@@ -208,22 +221,20 @@ export function apply(ctx, config = {}) {
             ...(group.matcher !== undefined ? { matcher: group.matcher } : {}),
           })
         }
-        // ${CLAUDE_PROJECT_DIR} is per-session → substitute at run time.
-        const command = substituteCommand(hook.command, projectDir !== undefined ? { projectDir } : {})
-        const { output, durationMs } = await runHook(ctx.shell, {
-          command,
-          ...(hook.timeoutSec !== undefined ? { timeoutSec: hook.timeoutSec } : {}),
-        }, {
-          payload,
-          defaultTimeoutMs,
-          ...(hookEnv !== undefined ? { env: hookEnv } : {}),
-          ...(workdir !== undefined ? { cwd: workdir } : {}),
-          signal: opts.signal,
-          trailingNewline: true,
-          // Discard a hookSpecificOutput block whose hookEventName names a
-          // different event than the one firing.
-          expectedEventName: point,
-        }, () => performance.now())
+        const type = hook.type ?? 'command'
+        const { output, durationMs } = await (type === 'command'
+          ? runCommandHook(ctx, hook, point, payload, {
+              projectDir, hookEnv, workdir, defaultTimeoutMs,
+              signal: opts.signal,
+              // Discard a hookSpecificOutput block whose hookEventName names a
+              // different event than the one firing.
+              expectedEventName: point,
+            })
+          : runNonCommandHook(ctx, type, hook, point, payload, {
+              agent: opts.agent,
+              signal: opts.signal,
+              expectedEventName: point,
+            }))
         outputs.push(output)
         if (output.updatedInput !== undefined) {
           ctx.logger.warn(`cc-hooks: ${point} hook requested updatedInput, which is not yet honored (ignored)`)
@@ -237,6 +248,45 @@ export function apply(ctx, config = {}) {
       }
     }
     return mergeHookOutputs(outputs)
+  }
+
+  /**
+   * Run one command hook through ctx.shell with the CC stdin framing
+   * (JSON payload + newline) and per-event default timeout. The command is
+   * `${CLAUDE_PROJECT_DIR}`-substituted at run time (per-session value).
+   */
+  async function runCommandHook(ctx, hook, point, payload, opts) {
+    const command = substituteCommand(hook.command, opts.projectDir !== undefined ? { projectDir: opts.projectDir } : {})
+    return runHook(ctx.shell, {
+      command,
+      ...(hook.timeoutSec !== undefined ? { timeoutSec: hook.timeoutSec } : {}),
+    }, {
+      payload,
+      defaultTimeoutMs: defaultTimeoutMsFor(point, 'command', opts.defaultTimeoutMs),
+      ...(opts.hookEnv !== undefined ? { env: opts.hookEnv } : {}),
+      ...(opts.workdir !== undefined ? { cwd: opts.workdir } : {}),
+      signal: opts.signal,
+      trailingNewline: true,
+      expectedEventName: opts.expectedEventName,
+    }, () => performance.now())
+  }
+
+  /**
+   * Dispatch a non-command hook (http / mcp_tool / prompt / agent) to its
+   * executor. Executors never throw — a missing capability degrades to a
+   * warning + neutral outcome; an unknown type is skipped with a warning.
+   */
+  async function runNonCommandHook(ctx, type, hook, point, payload, opts) {
+    const runOpts = { ...opts, event: point }
+    switch (type) {
+      case 'http': return runHttpHook(ctx, hook, payload, runOpts)
+      case 'mcp_tool': return runMcpToolHook(ctx, hook, payload, runOpts)
+      case 'prompt': return runPromptHook(ctx, hook, payload, runOpts)
+      case 'agent': return runAgentHook(ctx, hook, payload, runOpts)
+      default:
+        ctx.logger.warn(`cc-hooks: ${point} unknown hook type "${type}" skipped`)
+        return { output: { exitCode: undefined, stderr: '', stdout: '' }, durationMs: 0 }
+    }
   }
 
   /** Build additional model context from hook output, or return undefined when empty. */

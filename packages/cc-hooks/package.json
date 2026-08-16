@@ -1,7 +1,7 @@
 {
   "name": "dsh-cc-hooks",
   "version": "0.1.0",
-  "description": "Run unmodified Claude Code command hooks in DSH with per-session discovery: project .claude/hooks + global ~/.claude/hooks + plugin dirs, executed via @deepseek-ai/dsh-hook-protocol (11/31 events, command type only, incl. if-field filtering). Breaks the official bridge's process-level single-config limit.",
+  "description": "Run unmodified Claude Code hooks in DSH with per-session discovery: project .claude/hooks + global ~/.claude/hooks + plugin dirs. All five handler types execute (command/http/mcp_tool/prompt/agent) through @deepseek-ai/dsh-hook-protocol (11/31 wired events, if-field filtering, official event×type support matrix). Breaks the official bridge's process-level single-config limit.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
@@ -41,10 +41,18 @@
     "@deepseek-ai/schemastery": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/cordis": { "optional": true },
-    "@deepseek-ai/dsh-hook-protocol": { "optional": true },
-    "@deepseek-ai/dsh-llm": { "optional": true },
-    "@deepseek-ai/schemastery": { "optional": true }
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-hook-protocol": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20"
