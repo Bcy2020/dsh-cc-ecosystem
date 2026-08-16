@@ -70,7 +70,10 @@ export function apply(ctx, config = {}) {
       return next()
     }
     const perm = loaded.permissions
-    if (perm === undefined || perm.status !== 'DIRECT') return next()
+    if (perm === undefined) return next()
+    // Proceed when there are rules to fold OR when the MCP auto-approve toggle
+    // is on (it is meaningful even with an otherwise-empty settings file).
+    if (perm.status !== 'DIRECT' && perm.enableAllProjectMcpServers !== true) return next()
     const result = evaluateCall(perm.parsed, { tool: exec.name, args: exec.arguments }, {
       cwd: loaded.cwd,
       homeDir,
@@ -83,6 +86,16 @@ export function apply(ctx, config = {}) {
     if (result.decision === 'ask') {
       ctx.logger.info(`cc-permissions: ASK ${exec.name} (cwd=${cwd}) — ${result.reason}`)
       return { kind: 'ask', reason: result.reason ?? 'A Claude Code permission rule requests confirmation.' }
+    }
+    // CC settings `enableAllProjectMcpServers: true` auto-approves tools from
+    // PROJECT MCP servers (mcp__<server>__<tool>); plugin MCP tools keep their
+    // mcp__plugin_ namespace and are NOT covered. Slots in at the bottom of
+    // the deny → ask → allow fold: explicit deny/ask rules still win.
+    if (result.decision === 'none'
+      && perm.enableAllProjectMcpServers === true
+      && exec.name.startsWith('mcp__') && !exec.name.startsWith('mcp__plugin_')) {
+      ctx.logger.info(`cc-permissions: ALLOW ${exec.name} (cwd=${cwd}) — enableAllProjectMcpServers=true auto-approves project MCP tools`)
+      return { kind: 'allow', reason: 'enableAllProjectMcpServers=true auto-approves project MCP server tools.' }
     }
     return next()
   })
