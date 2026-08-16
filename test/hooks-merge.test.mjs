@@ -95,7 +95,7 @@ test('substituteCommand: replaces set vars, leaves unset tokens verbatim', () =>
 
 // ─── discoverHookFiles ───────────────────────────────────────────────────────
 
-test('discover: finds project + global + plugin sources with per-plugin root; skips missing files', async () => {
+test('discover: finds user/project settings-hooks + hooks.json + plugin sources in scope order', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cc-hooks-'))
   try {
     const home = join(root, 'home')
@@ -106,6 +106,10 @@ test('discover: finds project + global + plugin sources with per-plugin root; sk
     mkdirSync(join(proj, '.claude', 'hooks'), { recursive: true })
     mkdirSync(join(home, '.claude', 'hooks'), { recursive: true })
     mkdirSync(join(plugin, 'hooks'), { recursive: true })
+    // Official CC locations: hooks in settings.json (user/project/local) …
+    writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'user-settings.sh' }] }] } }))
+    writeFileSync(join(proj, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: [] }, hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'proj-settings.sh' }] }] } }))
+    // … plus the community hooks.json convention (project/user) and plugins.
     writeFileSync(join(proj, '.claude', 'hooks', 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'proj.sh' }] }] } }))
     writeFileSync(join(home, '.claude', 'hooks', 'hooks.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'user.sh' }] }] } }))
     writeFileSync(join(plugin, 'hooks', 'hooks.json'), JSON.stringify({ hooks: { PostToolUse: [{ hooks: [{ type: 'command', command: '${CLAUDE_PLUGIN_ROOT}/sign.sh' }] }] } }))
@@ -116,15 +120,43 @@ test('discover: finds project + global + plugin sources with per-plugin root; sk
       pluginDirs: [plugin],
     })
     assert.equal(projectRoot, proj)
-    assert.deepEqual(sources.map((s) => s.scope), ['project', 'user', 'plugin'])
-    assert.equal(sources[0].path, join(proj, '.claude', 'hooks', 'hooks.json'))
-    assert.equal(sources[1].path, join(home, '.claude', 'hooks', 'hooks.json'))
-    assert.equal(sources[2].path, join(plugin, 'hooks', 'hooks.json'))
-    assert.equal(sources[2].pluginRoot, plugin)
+    // Scope order: user settings → user hooks.json → project settings → project hooks.json → plugin.
+    assert.deepEqual(sources.map((s) => s.scope), ['user', 'user', 'project', 'project', 'plugin'])
+    assert.equal(sources[0].path, join(home, '.claude', 'settings.json'))
+    assert.equal(sources[2].path, join(proj, '.claude', 'settings.json'))
+    assert.equal(sources[3].path, join(proj, '.claude', 'hooks', 'hooks.json'))
+    assert.equal(sources[4].path, join(plugin, 'hooks', 'hooks.json'))
+    assert.equal(sources[4].pluginRoot, plugin)
 
     // ${CLAUDE_PLUGIN_ROOT} substitutes to the plugin root at parse time.
-    const parsed = parseHooksConfig(sources[2].data, { pluginRoot: sources[2].pluginRoot })
+    const parsed = parseHooksConfig(sources[4].data, { pluginRoot: sources[4].pluginRoot })
     assert.equal(parsed.config.PostToolUse[0].hooks[0].command, `${plugin}/sign.sh`)
+
+    // All sources stack: project settings + project hooks.json both contribute.
+    const merged = mergeHookConfigs(sources.filter(s => s.error === undefined).map(s => parseHooksConfig(s.data, s.pluginRoot !== undefined ? { pluginRoot: s.pluginRoot } : {})))
+    assert.equal(merged.PreToolUse.length, 4) // user-settings + user + proj-settings + proj
+    assert.deepEqual(merged.PreToolUse.map(g => g.hooks[0].command), ['user-settings.sh', 'user.sh', 'proj-settings.sh', 'proj.sh'])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('discover: settings without a hooks key contribute nothing; settings.local.json hooks are found', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cc-hooks-'))
+  try {
+    const home = join(root, 'home')
+    const proj = join(root, 'proj')
+    mkdirSync(join(proj, '.git'), { recursive: true })
+    mkdirSync(join(proj, '.claude'), { recursive: true })
+    // No hooks key → skipped even though the file exists.
+    writeFileSync(join(proj, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(git status *)'] } }))
+    // local settings hooks → discovered.
+    writeFileSync(join(proj, '.claude', 'settings.local.json'), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'local.sh' }] }] } }))
+
+    const { sources } = await discoverHookFiles(proj, { homeDir: home, projectRootMarkers: ['.git'] })
+    assert.deepEqual(sources.map((s) => [s.scope, s.path]), [['local', join(proj, '.claude', 'settings.local.json')]])
+    const merged = mergeHookConfigs(sources.map(s => parseHooksConfig(s.data)))
+    assert.equal(merged.Stop[0].hooks[0].command, 'local.sh')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
