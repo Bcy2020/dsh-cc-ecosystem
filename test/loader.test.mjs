@@ -327,3 +327,41 @@ test('loadClaude: global ~/.claude merged with lower rank', async () => {
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('loadClaude: skill allowed-tools / disallowed-tools parsed into IR', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cc-loader-'))
+  try {
+    mkdirSync(join(dir, '.claude', 'skills', 'scoped'), { recursive: true })
+    writeFileSync(join(dir, '.claude', 'skills', 'scoped', 'SKILL.md'), [
+      '---',
+      'name: scoped',
+      'description: Skill with a tool scope',
+      'allowed-tools:',
+      '  - Read',
+      '  - mcp__github__get_issue',
+      'disallowed-tools:',
+      '  - Write',
+      '  - Edit',
+      '---',
+      'Use the allowed tools.',
+    ].join('\n'))
+    writeFileSync(join(dir, '.git'), '')
+    const ir = await loadClaude({ cwd: dir, homeDir: join(tmpdir(), 'nohome'), enableGlobal: false })
+    assert.equal(ir.components.skills.length, 1)
+    const skill = ir.components.skills[0]
+    assert.deepEqual(skill.allowedTools, ['Read', 'mcp__github__get_issue'])
+    assert.deepEqual(skill.disallowedTools, ['Write', 'Edit'])
+    assert.equal(skill.status, 'DIRECT')
+    // No tool-scope fields → empty arrays, still DIRECT.
+    mkdirSync(join(dir, '.claude', 'skills', 'plain'), { recursive: true })
+    writeFileSync(join(dir, '.claude', 'skills', 'plain', 'SKILL.md'), [
+      '---', 'name: plain', 'description: Plain skill', '---', 'plain body',
+    ].join('\n'))
+    const ir2 = await loadClaude({ cwd: dir, homeDir: join(tmpdir(), 'nohome'), enableGlobal: false })
+    const plain = ir2.components.skills.find((s) => s.name === 'plain')
+    assert.deepEqual(plain.allowedTools, [])
+    assert.deepEqual(plain.disallowedTools, [])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

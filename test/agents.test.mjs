@@ -95,6 +95,38 @@ test('buildAgentEntry: unknown fields land in notes, isolation captured', () => 
   assert.ok(e.notes.some((n) => n.includes('worktree')))
 })
 
+test('buildAgentEntry: context/memory/color extracted, agent field reported', () => {
+  const e = buildAgentEntry({
+    path: '/x/a.md', directory: '/x', name: 'a', description: 'd',
+    body: 'body',
+    fm: {
+      name: 'a', description: 'd',
+      context: ['Extra guidance one', 'Extra guidance two'],
+      memory: 'project',
+      color: 'blue',
+      agent: 'parent-agent',
+    },
+    scope: 'project', rank: 150,
+  })
+  assert.deepEqual(e.context, ['Extra guidance one', 'Extra guidance two'])
+  assert.equal(e.memory, 'project')
+  assert.equal(e.color, 'blue')
+  assert.equal(e.agent, 'parent-agent')
+  // agent is non-official → ADAPTED with a report note; context/memory/color
+  // keep the entry DIRECT-capable (context is consumed by the persona).
+  assert.equal(e.status, 'ADAPTED')
+  assert.ok(e.notes.some((n) => n.includes('agent field')))
+})
+
+test('classifyAgentFields: color and agent are ADAPTED, not unknown', () => {
+  const notes = []
+  assert.equal(classifyAgentFields({ color: 'red' }, notes), 'ADAPTED')
+  assert.ok(notes.some((n) => n.includes('color')))
+  const notes2 = []
+  assert.equal(classifyAgentFields({ agent: 'x' }, notes2), 'ADAPTED')
+  assert.ok(notes2.some((n) => n.includes('agent field')))
+})
+
 test('mergeAgentCatalog: project beats global on name clash, fail loud', async () => {
   const dir = await fixture({
     'proj/agents/dup.md': `---\nname: dup\ndescription: project one\n---\nProject body.\n`,

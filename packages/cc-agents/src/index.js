@@ -255,7 +255,7 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
         label: `cc:${agent.scope}:${agent.name}`,
         prompt,
         parent,
-        persona: agent.systemPrompt,
+        persona: personaFor(agent),
         ...toolFilter !== undefined ? { toolFilter } : {},
         ...model !== undefined ? { agentOptions: { model } } : {},
         maxDepth: config.maxDepth,
@@ -295,6 +295,17 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * The delegation persona: the agent body, plus any frontmatter `context`
+ * material appended verbatim (community convention; CC has no such field in
+ * the official 16, but some agents carry extra system-prompt prose there).
+ */
+export function personaFor(agent) {
+  const context = agent.context
+  if (context === undefined || context.length === 0) return agent.systemPrompt
+  return `${agent.systemPrompt}\n\n${context.join('\n\n')}`
+}
 
 /**
  * Resolve a CC frontmatter `model` name to a DSH model name via the

@@ -12,13 +12,24 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isSkillName, parseFrontmatter, pathExists, readTextSafe } from './skills.js'
 
-/** CC agent frontmatter fields we map to a delegation (DIRECT). */
+/**
+ * CC agent frontmatter fields we map to a delegation (DIRECT).
+ *
+ * Verified against the official subagents reference (16 fields): name,
+ * description, tools, disallowedTools, model, permissionMode, mcpServers,
+ * hooks, maxTurns, skills, initialPrompt, memory, effort, background,
+ * isolation, color. `context` is not in the official list but is used by
+ * community agents as extra system-prompt material — we extract it and append
+ * it to the persona (see buildAgentEntry). `agent` is likewise non-official
+ * (a leftover in the old whitelist); it is extracted and reported, never
+ * treated as DIRECT.
+ */
 const DIRECT_FIELDS = [
   'name', 'description', 'tools', 'disallowedTools', 'model', 'effort',
-  'maxTurns', 'skills', 'background', 'initialPrompt', 'agent', 'context',
+  'maxTurns', 'skills', 'background', 'initialPrompt', 'context',
 ]
 /** CC fields DSH cannot honor on this kind of agent (reported, never fatal). */
-const UNSUPPORTED_FIELDS = ['permissionMode', 'mcpServers', 'hooks', 'memory', 'isolation', 'Agent']
+const UNSUPPORTED_FIELDS = ['permissionMode', 'mcpServers', 'hooks', 'isolation']
 
 /**
  * Discover `.claude/agents/*.md` under one root (project or global user dir).
@@ -89,6 +100,14 @@ export function buildAgentEntry({ path, directory, name, description, body, fm, 
   const background = truthy(fm['background'])
   const initialPrompt = stringField(fm, 'initialPrompt')
   const isolation = stringField(fm, 'isolation')
+  const memory = stringField(fm, 'memory')
+  const color = stringField(fm, 'color')
+  // Community context field (not in the official 16): extra system-prompt
+  // material appended to the persona by the cc-agents adapter.
+  const context = stringList(fm, 'context')
+  // Non-official leftover field: no DSH parent-identity mapping exists, so the
+  // raw value is kept for the report and flagged in notes.
+  const agentField = stringField(fm, 'agent')
 
   if (isolation === 'worktree') {
     notes.push('isolation:worktree has no DSH equivalent — agent not delegatable')
@@ -119,6 +138,10 @@ export function buildAgentEntry({ path, directory, name, description, body, fm, 
     ...(background ? { background: true } : {}),
     ...(initialPrompt !== undefined ? { initialPrompt } : {}),
     ...(isolation !== undefined ? { isolation } : {}),
+    ...(memory !== undefined ? { memory } : {}),
+    ...(color !== undefined ? { color } : {}),
+    ...(context.length > 0 ? { context } : {}),
+    ...(agentField !== undefined ? { agent: agentField } : {}),
     status,
     notes,
   }
@@ -149,6 +172,16 @@ export function classifyAgentFields(fm, notes = []) {
     if (key === 'Agent') {
       status = worse(status, 'ADAPTED')
       notes.push('Agent(agent_type) applies to main-thread agents only — reported')
+      continue
+    }
+    if (key === 'color') {
+      status = worse(status, 'ADAPTED')
+      notes.push('color affects CC UI display only — reported, no DSH equivalent')
+      continue
+    }
+    if (key === 'agent') {
+      status = worse(status, 'ADAPTED')
+      notes.push('agent field is not a CC standard field — reported, no DSH parent-identity mapping')
       continue
     }
     if (UNSUPPORTED_FIELDS.includes(key)) {

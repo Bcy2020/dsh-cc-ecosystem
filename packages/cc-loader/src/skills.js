@@ -160,6 +160,11 @@ async function parseSkillCandidateFile(path, source, rank, flatName, warnings = 
   try { invocation = parseInvocationPolicy(parsed.data) }
   catch { invocation = { modelInvocable: true, userInvocable: true } }
   const whenToUse = stringField(parsed.data, 'whenToUse')
+  // Skill frontmatter tool-scope fields (CC kebab-case, unlike agent camelCase).
+  // allowed-tools: tools that run without approval while the skill is active;
+  // disallowed-tools: tools removed from the pool while the skill is active.
+  const allowedTools = stringList(parsed.data, 'allowed-tools')
+  const disallowedTools = stringList(parsed.data, 'disallowed-tools')
   return {
     kind: 'skill',
     name,
@@ -171,6 +176,8 @@ async function parseSkillCandidateFile(path, source, rank, flatName, warnings = 
     locator: { path, directory: dirname(path) },
     resourceBase: { kind: 'directory', path: dirname(path) },
     frontmatter: parsed.data,
+    allowedTools,
+    disallowedTools,
     status: 'DIRECT',
   }
 }
@@ -208,6 +215,14 @@ function findClosingFrontmatter(raw, start) {
 function stringField(data, key) {
   const v = data[key]
   return typeof v === 'string' && v.length > 0 ? v : undefined
+}
+
+function stringList(data, key) {
+  const v = data[key]
+  if (v === undefined) return []
+  if (typeof v === 'string') return [v]
+  if (Array.isArray(v)) return v.filter((x) => typeof x === 'string' && x.length > 0)
+  return []
 }
 
 function parseInvocationPolicy(data) {

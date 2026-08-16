@@ -14,7 +14,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { loadClaude, parseFrontmatter } from 'dsh-cc-loader'
+import { loadClaude, parseFrontmatter, expandCcToolToDsh } from 'dsh-cc-loader'
 
 export const name = 'cc-skills'
 export const inject = ['skills']
@@ -34,6 +34,12 @@ export const Config = z.object({
   globalSkillRank: z.number().default(160),
   globalSkillSource: z.string().default('user-claude'),
   homeDir: z.string(),
+  // ── skill tool-scope (allowed-tools / disallowed-tools) ──────────────────
+  // CC semantics: while a skill is active (the round it was invoked in), tools
+  // listed in allowed-tools run without approval and tools listed in
+  // disallowed-tools are removed from the pool. "Active" ends at the next user
+  // message (CC: cleared on the next message).
+  enableToolScope: z.boolean().default(true),
 })
 
 export function apply(ctx, config = {}) {
@@ -55,6 +61,9 @@ export function apply(ctx, config = {}) {
   }
   if (config.enableRules !== false) {
     registerRulesSection(ctx, config, loaderOpts)
+  }
+  if (config.enableToolScope !== false) {
+    registerToolScope(ctx, config, loaderOpts)
   }
 }
 
@@ -182,4 +191,149 @@ As you answer the user's questions, you can use the following context:
 # claudeMd
 ${parts.join('\n')}
       </system-reminder>`
+}
+
+// ─── skill tool-scope (allowed-tools / disallowed-tools) ─────────────────────
+
+// Per-agent activation state. "Active" spans from the skill invocation (the
+// `skill` tool call or a `/name` gesture) to the next user message, matching
+// CC's "cleared on the next message" semantics.
+//
+//   agentScope: Map<agentId, { skill, allowed: Set, disallowed: Set, disposers: [] }>
+const agentScopes = new Map()
+
+function log(ctx, level, message) {
+  try { ctx.logger?.[level]?.(`cc-skills: ${message}`) } catch { /* logger absence is not fatal */ }
+}
+
+/**
+ * Activate a skill's tool scope for an agent. Looks the skill up in the IR
+ * (same discovery the provider uses), expands CC tool names to DSH names, and
+ * hides disallowed tools via the agent's scoped tool registry. Never throws —
+ * a missing skill or an unavailable registry degrades to "no scope".
+ */
+async function activateSkillScope(ctx, agent, skillName, loaderOpts) {
+  if (!agent || typeof skillName !== 'string' || skillName.length === 0) return
+  const agentId = agent.id ?? String(agent)
+  const cwd = agent.session?.header?.cwd ?? process.cwd()
+  let ir
+  try { ir = await loadClaude({ ...loaderOpts(), cwd }) } catch (error) {
+    log(ctx, 'warn', `skill "${skillName}": discovery failed — no tool scope: ${String(error)}`)
+    return
+  }
+  const skill = ir.components.skills.find((s) => s.name === skillName)
+  if (skill === undefined) {
+    log(ctx, 'info', `skill "${skillName}" not in IR — no tool scope`)
+    return
+  }
+  const notes = []
+  const allowed = new Set(skill.allowedTools.flatMap((name) => expandCcToolToDsh(name, notes)))
+  const disallowed = new Set(skill.disallowedTools.flatMap((name) => expandCcToolToDsh(name, notes)))
+  for (const n of notes) log(ctx, 'warn', `skill "${skillName}": ${n}`)
+
+  // Hide disallowed tools from the model via the agent's scoped registry.
+  const disposers = []
+  if (disallowed.size > 0 && typeof agent.ctx?.tools?.restrict === 'function') {
+    for (const name of disallowed) {
+      try { disposers.push(agent.ctx.tools.restrict({ deny: [name] })) } catch { /* unknown tool: pre-execute still denies */ }
+    }
+  }
+  clearAgentScope(agentId, disposers)
+  agentScopes.set(agentId, { skill: skillName, allowed, disallowed, disposers })
+  log(ctx, 'info', `skill "${skillName}" active for agent ${agentId} — ${allowed.size} allowed, ${disallowed.size} disallowed tool(s)`)
+}
+
+/** Dispose a previous scope's restrict disposers, then record new ones. */
+function clearAgentScope(agentId, newDisposers = []) {
+  const prev = agentScopes.get(agentId)
+  if (prev !== undefined) {
+    for (const dispose of prev.disposers) {
+      try { dispose() } catch { /* best effort */ }
+    }
+  }
+  if (newDisposers.length === 0) agentScopes.delete(agentId)
+}
+
+/**
+ * Register the tool-scope gate:
+ *   - agent/pre-step clears the previous round's activation (CC: "cleared on
+ *     the next message") and activates a skill named by a `/name` gesture
+ *     (tool-skill injects a message with source.kind === 'skill-invocation').
+ *   - tools/pre-execute activates on the `skill` tool call, then gates: a
+ *     disallowed tool is denied outright; an allowed tool that the downstream
+ *     chain would `ask` about is allowed instead (deny from the downstream
+ *     chain is preserved — CC order is deny > ask > allow).
+ *
+ * Both listeners call next() when they are not the decision owner (waterfall
+ * discipline), and apply() never throws synchronously.
+ */
+function registerToolScope(ctx, config, loaderOpts) {
+  // prepend: run outside tool-skill's own pre-step listener, so the final
+  // decision.messages (after tool-skill injected the /name gesture) is what we
+  // inspect. The rules-injection listener below is unaffected: it still runs
+  // inside our next().
+  ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
+    const decision = await next()
+    if (decision.kind !== 'enter') return decision
+    try {
+      if (agent === undefined || agent === null) return decision
+      const agentId = agent.id ?? String(agent)
+      // CC: the scope is cleared on the NEXT USER message. A non-empty claimed
+      // batch is a user message; an empty batch is a tool-continuation step,
+      // during which the active scope must stay active.
+      if ((messages?.length ?? 0) > 0) clearAgentScope(agentId)
+      // A /name gesture: tool-skill injected a skill-invocation message into
+      // the final decision (source.kind === 'skill-invocation').
+      for (const message of decision.messages ?? []) {
+        const source = message?.source
+        if (source?.kind !== 'skill-invocation' || typeof source.name !== 'string') continue
+        await activateSkillScope(ctx, agent, source.name, loaderOpts)
+      }
+    } catch (error) {
+      log(ctx, 'warn', `pre-step tool-scope handling failed: ${String(error)}`)
+    }
+    return decision
+  }, { prepend: true })
+
+  ctx.on('tools/pre-execute', async (exec, next) => {
+    try {
+      const agent = exec?.agent
+      if (agent === undefined || agent === null) return next()
+      const agentId = agent.id ?? String(agent)
+      // The `skill` tool call itself activates the skill for this round.
+      if (exec?.name === 'skill' && typeof exec.arguments?.name === 'string') {
+        await activateSkillScope(ctx, agent, exec.arguments.name, loaderOpts)
+      }
+      const scope = agentScopes.get(agentId)
+      if (scope === undefined) return next()
+      if (scope.disallowed.has(exec.name)) {
+        return {
+          kind: 'deny',
+          reason: `tool "${exec.name}" is disallowed while skill "${scope.skill}" is active (disallowed-tools)`,
+        }
+      }
+      if (scope.allowed.has(exec.name)) {
+        // Preserve a downstream deny; upgrade an ask to allow (CC: allowed-tools
+        // runs without approval). Only the decision owner short-circuits.
+        const decision = await next()
+        if (decision.kind === 'ask') return { kind: 'allow' }
+        return decision
+      }
+      return next()
+    } catch (error) {
+      log(ctx, 'warn', `pre-execute tool-scope handling failed: ${String(error)}`)
+      return next()
+    }
+  })
+
+  ctx.effect(() => () => {
+    for (const scope of agentScopes.values()) {
+      for (const dispose of scope.disposers) {
+        try { dispose() } catch { /* best effort */ }
+      }
+    }
+    agentScopes.clear()
+  })
+
+  log(ctx, 'info', 'tool-scope gate registered (skill allowed-tools / disallowed-tools)')
 }
