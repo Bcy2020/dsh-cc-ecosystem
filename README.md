@@ -47,9 +47,8 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-skills dsh-cc-permissions d
 
 ## 验证
 
-- 单元测试:`node --test test/loader.test.mjs`(128 用例,含 loader/permissions/scope/plugin 等)+ `test/agents.test.mjs`(7 用例)+ `test/hooks-merge.test.mjs`(11 用例)+ `test/mcp.test.mjs`(21 用例)+ `test/mcp-adapter.test.mjs`(11 用例,含真实 stdio MCP 往返)+ `test/plugin.test.mjs`(17 用例) — 共 **153 用例全绿**
-- 真实项目验证:`node test/validate-demo.mjs`(对带真实 skill + 权限配置的项目做端到端求值)
-- 端到端演示项目:`../cc-demo-project/`(真实 anthropics 技能 + 权限 + agents + hooks + MCP,README 含 11 组测试提示词与预期行为速查)
+- 单元测试:`node --test test/` — 共 **164 用例全绿**(含 loader、agents、hooks、mcp、permissions、plugin、LSP 等)
+- 端到端验证:各包自带 smoke test(`packages/cc-mcp/test/mcp-smoke.test.mjs`、`packages/cc-permissions/test/gate.test.mjs`、`packages/cc-skills/test/scope.test.mjs`、`packages/cc-agents/test/persona.test.mjs`)
 
 ## License
 
