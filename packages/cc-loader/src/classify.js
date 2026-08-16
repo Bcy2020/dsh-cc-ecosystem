@@ -434,6 +434,7 @@ export function classifyComponents(ir) {
   for (const r of ir.components.rules ?? []) consider(r.status ?? STATUS.DIRECT, 'rule', r.name, r.reason)
   for (const a of ir.components.agents ?? []) consider(a.status ?? STATUS.DIRECT, 'agent', a.name, a.notes?.join('; ') || undefined)
   for (const s of ir.components.mcp?.servers ?? []) consider(s.status ?? STATUS.DIRECT, 'mcp-server', s.serverName, s.reason)
+  for (const s of ir.components.lsp?.servers ?? []) consider(s.status ?? STATUS.DIRECT, 'lsp-server', s.language, s.reason)
   const perm = ir.components.permissions
   if (perm !== undefined) {
     if (perm.status === STATUS.DIRECT || perm.status === STATUS.UNSUPPORTED) {

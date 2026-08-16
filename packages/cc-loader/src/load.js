@@ -87,12 +87,18 @@ export async function loadClaude(opts = {}) {
     warnings.push(...found.warnings)
   }
 
+  // LSP servers: plugin-root .lsp.json — discovered by the plugin scanner
+  // (M4); loadClaude itself has no plugin roots, so this stays empty here.
+  // discoverLspConfig() is exported for adapters that do scan plugin dirs.
+  const lsp = { servers: [], sources: [] }
+
   const components = {
     skills: skills.map((s) => ({ ...s, status: s.status ?? STATUS.DIRECT })),
     commands: commands.map((c) => ({ ...c, status: c.status ?? STATUS.DIRECT })),
     rules: rules.map((r) => ({ ...r, status: r.status ?? STATUS.DIRECT })),
     agents: catalog.agents,
     mcp,
+    lsp,
     permissions,
     unsupported: [], // future: workflows/monitors/themes/bin classification lands here
   }

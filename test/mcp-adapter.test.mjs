@@ -146,3 +146,33 @@ test('integration: loader entries feed the adapter end-to-end', async () => {
     await client.close()
   }
 })
+
+// ─── plugin namespace: full chain discovery → normalize → public name ───────
+
+test('plugin MCP: discoverMcpConfig → toRuntimeEntries → mcp__plugin_<name>_<server>__<tool>', async () => {
+  const { discoverMcpConfig } = await import('../packages/cc-loader/src/mcp.js')
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const pluginDir = mkdtempSync(join(tmpdir(), 'cc-plug-'))
+  try {
+    writeFileSync(join(pluginDir, '.mcp.json'), JSON.stringify({
+      mcpServers: { 'cc-echo': { command: process.execPath, args: [ECHO_SERVER] } },
+    }))
+    const found = await discoverMcpConfig(pluginDir, { pluginName: 'echo-mcp' })
+    assert.equal(found.servers.length, 1)
+    const [runtime] = toRuntimeEntries(found.servers, { pluginRoot: pluginDir, idleTimeoutMs: 10000, toolCallTimeoutMs: 10000 })
+    // CC official naming: mcp__plugin_<plugin>_<server>__<tool>
+    assert.equal(
+      publicToolName({ serverName: runtime.serverName, pluginName: runtime.pluginName }, 'echo'),
+      'mcp__plugin_echo-mcp_cc-echo__echo',
+    )
+    // Real connect through the plugin-scoped entry
+    const { client } = await connectAndList(runtime, pluginDir)
+    try {
+      const result = await client.callTool({ name: 'echo', arguments: { text: 'plugin-ok' } })
+      assert.equal(mapResult(result).content[0].text, 'echo: plugin-ok')
+    } finally {
+      await client.close()
+    }
+  } finally { rmSync(pluginDir, { recursive: true, force: true }) }
+})
