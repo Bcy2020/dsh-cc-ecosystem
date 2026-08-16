@@ -365,3 +365,57 @@ test('loadClaude: skill allowed-tools / disallowed-tools parsed into IR', async 
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('loadClaude: command allowed-tools / disallowed-tools parsed into IR', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cc-loader-'))
+  try {
+    mkdirSync(join(dir, '.claude', 'commands'), { recursive: true })
+    writeFileSync(join(dir, '.claude', 'commands', 'deploy.md'), [
+      '---',
+      'description: Deploy the app',
+      'allowed-tools:',
+      '  - Bash',
+      '  - mcp__plugin_deploy_run__deploy',
+      'disallowed-tools:',
+      '  - Edit',
+      '---',
+      'Deploy it.',
+    ].join('\n'))
+    writeFileSync(join(dir, '.git'), '')
+    const ir = await loadClaude({ cwd: dir, homeDir: join(tmpdir(), 'nohome'), enableGlobal: false })
+    assert.equal(ir.components.commands.length, 1)
+    const command = ir.components.commands[0]
+    assert.equal(command.name, 'deploy')
+    assert.deepEqual(command.allowedTools, ['Bash', 'mcp__plugin_deploy_run__deploy'])
+    assert.deepEqual(command.disallowedTools, ['Edit'])
+    assert.equal(command.status, 'DIRECT')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('loadClaude: settings model/env/statusLine/outputStyle/enableAllProjectMcpServers parsed', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cc-loader-'))
+  try {
+    mkdirSync(join(dir, '.claude'), { recursive: true })
+    writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify({
+      model: 'claude-sonnet-4-5',
+      env: { CLAUDE_CODE_ENABLE_TELEMETRY: '1', BASH_DEFAULT_TIMEOUT_MS: '30000' },
+      statusLine: { type: 'command', command: '~/.claude/statusline.sh', padding: 0 },
+      outputStyle: 'Explanatory',
+      enableAllProjectMcpServers: true,
+      permissions: { allow: ['Bash(git status *)'] },
+    }))
+    writeFileSync(join(dir, '.git'), '')
+    const ir = await loadClaude({ cwd: dir, homeDir: join(tmpdir(), 'nohome'), enableGlobal: false })
+    const p = ir.components.permissions
+    assert.equal(p.model, 'claude-sonnet-4-5')
+    assert.deepEqual(p.env, { CLAUDE_CODE_ENABLE_TELEMETRY: '1', BASH_DEFAULT_TIMEOUT_MS: '30000' })
+    assert.deepEqual(p.statusLine, { type: 'command', command: '~/.claude/statusline.sh', padding: 0 })
+    assert.equal(p.outputStyle, 'Explanatory')
+    assert.equal(p.enableAllProjectMcpServers, true)
+    assert.equal(p.parsed.allow.length, 1)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

@@ -221,9 +221,13 @@ async function activateSkillScope(ctx, agent, skillName, loaderOpts) {
     log(ctx, 'warn', `skill "${skillName}": discovery failed — no tool scope: ${String(error)}`)
     return
   }
+  // Both skills and commands carry allowed-tools / disallowed-tools in CC
+  // frontmatter (commands are user-invocable slash commands with the same
+  // tool-scope semantics). Look up either by name.
   const skill = ir.components.skills.find((s) => s.name === skillName)
+    ?? ir.components.commands.find((c) => c.name === skillName)
   if (skill === undefined) {
-    log(ctx, 'info', `skill "${skillName}" not in IR — no tool scope`)
+    log(ctx, 'info', `skill/command "${skillName}" not in IR — no tool scope`)
     return
   }
   const notes = []

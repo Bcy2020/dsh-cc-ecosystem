@@ -112,6 +112,9 @@ export async function discoverCommands(rootDir, source, rank, warnings = []) {
     if (raw === undefined) continue
     const parsed = parseFrontmatter(raw)
     const description = parsed === undefined ? stem : (stringField(parsed.data, 'description') ?? stem)
+    // Command tool-scope fields (CC kebab-case, same shape as skills).
+    const allowedTools = parsed === undefined ? [] : stringList(parsed.data, 'allowed-tools')
+    const disallowedTools = parsed === undefined ? [] : stringList(parsed.data, 'disallowed-tools')
     out.push({
       kind: 'command',
       name: stem,
@@ -123,6 +126,8 @@ export async function discoverCommands(rootDir, source, rank, warnings = []) {
       locator: { path, directory: rootDir },
       resourceBase: { kind: 'directory', path: rootDir },
       frontmatter: parsed?.data ?? null,
+      allowedTools,
+      disallowedTools,
       status: 'DIRECT',
     })
   }

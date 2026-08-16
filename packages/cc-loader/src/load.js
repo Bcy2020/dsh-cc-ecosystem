@@ -75,6 +75,11 @@ export async function loadClaude(opts = {}) {
     defaultMode: merged.defaultMode,
     additionalDirectories: merged.additionalDirectories,
     disableBypassPermissionsMode: merged.disableBypassPermissionsMode,
+    model: merged.model,
+    env: merged.env,
+    statusLine: merged.statusLine,
+    outputStyle: merged.outputStyle,
+    enableAllProjectMcpServers: merged.enableAllProjectMcpServers,
     sources: merged.sources,
   }
 
@@ -132,6 +137,11 @@ export async function loadPermissions(opts = {}) {
     defaultMode: merged.defaultMode,
     additionalDirectories: merged.additionalDirectories,
     disableBypassPermissionsMode: merged.disableBypassPermissionsMode,
+    model: merged.model,
+    env: merged.env,
+    statusLine: merged.statusLine,
+    outputStyle: merged.outputStyle,
+    enableAllProjectMcpServers: merged.enableAllProjectMcpServers,
     sources: merged.sources,
   }
   return { cwd, projectRoot: discovered.projectRoot, permissions, warnings }

@@ -29,6 +29,19 @@ async function fixture() {
     '---',
     'Use the allowed tools.',
   ].join('\n'))
+  // A command with the same tool-scope fields (CC: commands carry
+  // allowed-tools / disallowed-tools too).
+  await mkdir(join(dir, '.claude', 'commands'), { recursive: true })
+  await writeFile(join(dir, '.claude', 'commands', 'scoped-cmd.md'), [
+    '---',
+    'description: Command with a tool scope',
+    'allowed-tools:',
+    '  - Read',
+    'disallowed-tools:',
+    '  - Write',
+    '---',
+    'Run the scoped command.',
+  ].join('\n'))
   await writeFile(join(dir, '.git'), '')
   return dir
 }
@@ -318,6 +331,39 @@ test('restrict failure degrades to pre-execute deny (own-layer tools stay visibl
     }, () => Promise.resolve({ kind: 'allow' }))
     assert.equal(denied.kind, 'deny', 'own-layer tool still denied at pre-execute')
     assert.match(denied.reason, /disallowed-tools/)
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+test('command allowed-tools / disallowed-tools enforced when the command activates', async () => {
+  const ctx = new Context()
+  const cwd = await fixture()
+  try {
+    ctx.provide('skills', stubSkills())
+    apply(ctx, Config({ homeDir: join(tmpdir(), 'nohome') }))
+    const agent = fakeAgent('a6', cwd)
+
+    // /scoped-cmd gesture → tool-skill injects skill-invocation for the command.
+    const userBatch = [{ source: { kind: 'user' }, content: [{ type: 'text', text: '/scoped-cmd' }] }]
+    const gesture = {
+      kind: 'user',
+      content: [{ type: 'text', text: '/scoped-cmd' }],
+      source: { kind: 'skill-invocation', name: 'scoped-cmd', form: 'instructions' },
+    }
+    await ctx.waterfall('agent/pre-step', { agent, messages: userBatch },
+      () => Promise.resolve({ kind: 'enter', messages: [...userBatch, gesture] }))
+
+    const denied = await ctx.waterfall('tools/pre-execute', {
+      agent, name: 'write', arguments: { file_path: '/x' },
+    }, () => Promise.resolve({ kind: 'allow' }))
+    assert.equal(denied.kind, 'deny', 'command disallowed-tools deny write')
+    assert.match(denied.reason, /scoped-cmd/)
+
+    const allowed = await ctx.waterfall('tools/pre-execute', {
+      agent, name: 'read', arguments: { file_path: '/x' },
+    }, () => Promise.resolve({ kind: 'allow' }))
+    assert.equal(allowed.kind, 'allow', 'command allowed-tools leaves read alone')
   } finally {
     await rm(cwd, { recursive: true, force: true })
   }
