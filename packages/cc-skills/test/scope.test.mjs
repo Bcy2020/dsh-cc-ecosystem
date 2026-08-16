@@ -132,7 +132,7 @@ test('pre-execute: disallowed tool denied while skill active', async () => {
   }
 })
 
-test('turn-stopping: activation cleared at round end (CC: next message sees tools again)', async () => {
+test('pre-step: activation cleared on the next user message (accepted one-round lag)', async () => {
   const ctx = new Context()
   const cwd = await fixture()
   try {
@@ -149,14 +149,13 @@ test('turn-stopping: activation cleared at round end (CC: next message sees tool
     }, () => Promise.resolve({ kind: 'allow' }))
     assert.equal(denied.kind, 'deny', 'round 1: disallowed tool denied')
 
-    // Round 1 ends → agent/turn-stopping clears the scope. The model-facing
-    // tool list for the NEXT round is assembled AFTER this, so the tools are
-    // visible again from the very next user message (CC semantics).
-    ctx.emit('agent/turn-stopping', { agent })
+    // Round 2: a fresh user message (non-empty pre-step batch) clears the scope.
+    await ctx.waterfall('agent/pre-step', { agent, messages: [{ source: { kind: 'user' }, content: [] }] },
+      () => Promise.resolve({ kind: 'enter', messages: [{ source: { kind: 'user' }, content: [] }] }))
     const after = await ctx.waterfall('tools/pre-execute', {
       agent, name: 'edit', arguments: { file_path: '/x' },
     }, () => Promise.resolve({ kind: 'allow' }))
-    assert.equal(after.kind, 'allow', 'round 2: scope cleared at turn end, edit allowed again')
+    assert.equal(after.kind, 'allow', 'round 2: scope cleared on user message, edit allowed again')
   } finally {
     await rm(cwd, { recursive: true, force: true })
   }

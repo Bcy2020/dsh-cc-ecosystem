@@ -278,33 +278,26 @@ function clearAgentScope(agentId, newDisposers = []) {
  * discipline), and apply() never throws synchronously.
  */
 function registerToolScope(ctx, config, loaderOpts) {
-  // Clear the previous round's activation at TURN END (agent/turn-stopping),
-  // not in pre-step: the agent loop assembles the model-facing tool list
-  // (systemPrompt.assemble) BEFORE the pre-step waterfall runs, so a clear
-  // inside pre-step only takes effect on the NEXT turn's assembly — the model
-  // would keep seeing the hidden tools for one extra round (CC: "cleared on
-  // the next message" must hold from the very next round). turn-stopping fires
-  // when a round ends with no pending tool continuation, which is exactly the
-  // boundary before the next user message's assembly.
-  ctx.on('agent/turn-stopping', ({ agent }) => {
-    try {
-      if (agent === undefined || agent === null) return
-      clearAgentScope(agent.id ?? String(agent))
-    } catch (error) {
-      log(ctx, 'warn', `turn-stopping tool-scope clear failed: ${String(error)}`)
-    }
-  })
-
-  // prepend: run outside tool-skill's own pre-step listener, so the final
-  // decision.messages (after tool-skill injected the /name gesture) is what we
-  // inspect. The rules-injection listener below is unaffected: it still runs
-  // inside our next(). A /name gesture activates the skill for THIS round; the
-  // round's end clears it (above), matching CC semantics.
+  // Clear the previous round's activation in pre-step. NOTE: this is
+  // intentionally NOT moved to agent/turn-stopping — that event is serial
+  // mode, where an earlier listener's non-undefined return value bails the
+  // chain and our clear never runs, leaving the scope stuck forever (tools
+  // stay hidden). Pre-step is a waterfall where our prepend listener always
+  // runs. Trade-off: the agent loop assembles the model-facing tool list
+  // (systemPrompt.assemble) BEFORE the pre-step waterfall, so a clear here
+  // takes effect from the NEXT round's assembly — the model sees the hidden
+  // tools for one extra round (skill round + next round hidden, visible from
+  // the third). That lag is accepted (verified 2026-08-17).
   ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
     const decision = await next()
     if (decision.kind !== 'enter') return decision
     try {
       if (agent === undefined || agent === null) return decision
+      const agentId = agent.id ?? String(agent)
+      // CC: the scope is cleared on the next user message. A non-empty claimed
+      // batch is a user message; an empty batch is a tool-continuation step,
+      // during which the active scope must stay active.
+      if ((messages?.length ?? 0) > 0) clearAgentScope(agentId)
       // A /name gesture: tool-skill injected a skill-invocation message into
       // the final decision (source.kind === 'skill-invocation').
       for (const message of decision.messages ?? []) {
