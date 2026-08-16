@@ -338,6 +338,7 @@ export async function runMcpToolHook(ctx, hook, payload, opts) {
         callId: CallId(nextId()),
         name,
         arguments: input,
+        ...(opts.agent !== undefined ? { agent: opts.agent } : {}),
         signal: deadline.controller.signal,
         deferContext() {},
         concludeTurn() {},
