@@ -8,7 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   parsePluginManifest, parseMarketplace, normalizePluginSource,
-  discoverPluginRoot, discoverMarketplace, RESERVED_MARKETPLACE_NAMES,
+  discoverPluginRoot, discoverMarketplace, pluginComponentName,
+  RESERVED_MARKETPLACE_NAMES,
 } from '../packages/cc-loader/src/plugin.js'
 import { loadClaude } from '../packages/cc-loader/src/load.js'
 import { STATUS } from '../packages/cc-loader/src/classify.js'
@@ -169,6 +170,20 @@ test('normalizePluginSource: shapes', () => {
   assert.equal(normalizePluginSource({ source: 'command', command: 'make' }).kind, 'command')
   assert.equal(normalizePluginSource({ source: 'weird' }).kind, 'invalid')
   assert.equal(normalizePluginSource(42).kind, 'invalid')
+})
+
+test('pluginComponentName: DSH-safe plugin-<plugin>-<name> kebab', () => {
+  assert.equal(pluginComponentName('superpowers', 'brainstorming'), 'plugin-superpowers-brainstorming')
+  assert.equal(pluginComponentName('my-plugin', 'tdd'), 'plugin-my-plugin-tdd')
+  // Names with illegal chars are sanitized to single-hyphen kebab (DSH
+  // grammar rejects double hyphens and non-alphanumerics).
+  assert.equal(pluginComponentName('My Plugin!', 'status'), 'plugin-my-plugin-status')
+  assert.equal(pluginComponentName('a--b', 'x'), 'plugin-a-b-x')
+  assert.equal(pluginComponentName('', 'x'), 'plugin-x')
+  // Result must satisfy DSH's skill-name grammar.
+  const dsh = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+  assert.ok(dsh.test(pluginComponentName('superpowers', 'brainstorming')))
+  assert.ok(dsh.test(pluginComponentName('Weird_Name!!', 'c-1')))
 })
 
 // ─── discoverPluginRoot ──────────────────────────────────────────────────────

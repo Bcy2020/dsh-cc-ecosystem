@@ -21,7 +21,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { loadClaude, parseFrontmatter, expandCcToolToDsh } from 'dsh-cc-loader'
+import { loadClaude, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
 
 export const name = 'cc-agents'
 export const inject = ['tools', 'subagents']
@@ -43,6 +43,11 @@ export const Config = z.object({
   homeDir: z.string(),
   projectAgentRank: z.number().default(150),
   globalAgentRank: z.number().default(160),
+  // ── plugin roots (M4c) ────────────────────────────────────────────────────
+  // Plugin agents are exposed as `plugin-<plugin>-<name>` (DSH skill-name
+  // grammar is strict kebab-case; CC's `<plugin>:<name>` colon does not fit).
+  pluginRoots: z.array(z.string()).default([]),
+  pluginAgentRank: z.number().default(170),
   /**
    * CC frontmatter model names → DSH model names. CC agents name Claude
    * models (sonnet/opus/…), which this deployment cannot resolve; without an
@@ -64,6 +69,8 @@ export function apply(ctx, config = {}) {
     globalClaudeDir: config.globalClaudeDir,
     projectSkillRank: config.projectAgentRank,
     globalSkillRank: config.globalAgentRank,
+    pluginRoots: config.pluginRoots,
+    pluginSkillRank: config.pluginAgentRank,
   })
 
   ctx.logger.info(`cc-agents: registered (delegation via ${config.provider}, catalog injection ${config.injectCatalog !== false ? 'on' : 'off'})`)
@@ -81,7 +88,7 @@ export function apply(ctx, config = {}) {
     const cwd = agent?.session?.header?.cwd ?? process.cwd()
     const ir = await loadClaude({ ...loaderOpts(), cwd })
     for (const w of ir.warnings) ctx.logger.warn(`cc-agents: ${w}`)
-    const entry = { agents: ir.components.agents, skills: ir.components.skills, cwd }
+    const entry = { agents: mergePluginAgents(ir), skills: ir.components.skills, cwd }
     if (sessionId !== undefined) sessionCache.set(sessionId, entry)
     return entry
   }
@@ -295,6 +302,25 @@ function defineCcAgentTool(ctx, config, catalogFor, toolName) {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Top-level agents + plugin agents namespaced `plugin-<plugin>-<name>`
+ * (M4c). Pure: takes the loader IR, returns the delegation catalog. Plugin
+ * agents keep every IR field except the name, which becomes the DSH-facing
+ * namespaced identifier the model sees in the injected catalog and passes to
+ * the cc_agent tool.
+ * @param {object} ir - loadClaude IR.
+ * @returns {object[]} agent catalog entries.
+ */
+export function mergePluginAgents(ir) {
+  const pluginAgents = []
+  for (const plugin of ir.components.plugins ?? []) {
+    for (const a of plugin.components.agents ?? []) {
+      pluginAgents.push({ ...a, name: pluginComponentName(plugin.name, a.name), scope: 'plugin' })
+    }
+  }
+  return [...(ir.components.agents ?? []), ...pluginAgents]
+}
 
 /**
  * The delegation persona: the agent body, plus any frontmatter `context`

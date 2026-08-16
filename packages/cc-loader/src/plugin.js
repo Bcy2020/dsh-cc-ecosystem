@@ -45,6 +45,29 @@ export function pluginNameOf(root) {
   return base.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'plugin'
 }
 
+/**
+ * Namespace a plugin component name for DSH exposure.
+ *
+ * CC uses `<plugin>:<component>` (e.g. `/superpowers:brainstorming`), but DSH
+ * skill/command names are strict kebab-case (no colons, no double hyphens —
+ * host grammar is /^[a-z0-9]+(?:-[a-z0-9]+)*$/), and the host is NOT modified
+ * by the ecosystem. The agreed mapping is a literal `plugin-` prefix followed
+ * by the plugin name and the component name, all single-hyphen kebab:
+ *   plugin-superpowers-brainstorming
+ *
+ * @param {string} pluginName - plugin name (manifest name or dir fallback).
+ * @param {string} componentName - the component's own kebab-case name.
+ * @returns {string} DSH-safe namespaced name.
+ */
+export function pluginComponentName(pluginName, componentName) {
+  const clean = String(pluginName ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  if (clean.length === 0) return `plugin-${componentName}`
+  return `plugin-${clean}-${componentName}`
+}
+
 /** Marketplace names Claude reserves for official Anthropic use. */
 export const RESERVED_MARKETPLACE_NAMES = new Set([
   'claude-code-marketplace', 'claude-code-plugins', 'claude-plugins-official',

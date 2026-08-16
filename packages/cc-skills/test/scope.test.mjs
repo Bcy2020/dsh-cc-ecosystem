@@ -368,3 +368,80 @@ test('command allowed-tools / disallowed-tools enforced when the command activat
     await rm(cwd, { recursive: true, force: true })
   }
 })
+
+// ─── plugin skills (M4c): `plugin-<plugin>-<name>` namespacing ──────────────
+
+/** Temp project + a separate plugin root with a scoped skill. */
+async function pluginFixture() {
+  const project = await mkdtemp(join(tmpdir(), 'cc-scope-proj-'))
+  await writeFile(join(project, '.git'), '')
+  const plugin = await mkdtemp(join(tmpdir(), 'cc-scope-plugin-'))
+  await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
+  await writeFile(join(plugin, '.claude-plugin', 'plugin.json'),
+    JSON.stringify({ name: 'demo-plug', version: '1.0.0' }))
+  await mkdir(join(plugin, 'skills', 'p-skill'), { recursive: true })
+  await writeFile(join(plugin, 'skills', 'p-skill', 'SKILL.md'), [
+    '---',
+    'name: p-skill',
+    'description: Plugin skill with a tool scope',
+    'allowed-tools:',
+    '  - Read',
+    'disallowed-tools:',
+    '  - Write',
+    '---',
+    'Use the plugin skill.',
+  ].join('\n'))
+  return { project, plugin }
+}
+
+test('provider list exposes plugin skills as plugin-<plugin>-<name>', async () => {
+  const { project, plugin } = await pluginFixture()
+  try {
+    const ctx = new Context()
+    const skills = stubSkills()
+    ctx.provide('skills', skills)
+    apply(ctx, Config({ homeDir: join(tmpdir(), 'nohome'), pluginRoots: [plugin] }))
+    const list = await skills.list({ cwd: project })
+    const names = list.map((s) => s.name)
+    assert.ok(names.includes('plugin-demo-plug-p-skill'), `names: ${names.join(', ')}`)
+    const entry = list.find((s) => s.name === 'plugin-demo-plug-p-skill')
+    assert.equal(entry.description, 'Plugin skill with a tool scope')
+    assert.equal(entry.rank, 170, 'plugin skill rank above global 160')
+  } finally {
+    await rm(project, { recursive: true, force: true })
+    await rm(plugin, { recursive: true, force: true })
+  }
+})
+
+test('plugin skill tool scope activates via namespaced gesture name', async () => {
+  const { project, plugin } = await pluginFixture()
+  try {
+    const ctx = new Context()
+    ctx.provide('skills', stubSkills())
+    apply(ctx, Config({ homeDir: join(tmpdir(), 'nohome'), pluginRoots: [plugin] }))
+    const agent = fakeAgent('a7', project)
+
+    const userBatch = [{ source: { kind: 'user' }, content: [{ type: 'text', text: '/plugin-demo-plug-p-skill' }] }]
+    const gesture = {
+      kind: 'user',
+      content: [{ type: 'text', text: '/plugin-demo-plug-p-skill' }],
+      source: { kind: 'skill-invocation', name: 'plugin-demo-plug-p-skill', form: 'instructions' },
+    }
+    await ctx.waterfall('agent/pre-step', { agent, messages: userBatch },
+      () => Promise.resolve({ kind: 'enter', messages: [...userBatch, gesture] }))
+
+    const denied = await ctx.waterfall('tools/pre-execute', {
+      agent, name: 'write', arguments: { file_path: '/x' },
+    }, () => Promise.resolve({ kind: 'allow' }))
+    assert.equal(denied.kind, 'deny', 'plugin skill disallowed-tools deny write')
+    assert.match(denied.reason, /plugin-demo-plug-p-skill/)
+
+    const allowed = await ctx.waterfall('tools/pre-execute', {
+      agent, name: 'read', arguments: { file_path: '/x' },
+    }, () => Promise.resolve({ kind: 'allow' }))
+    assert.equal(allowed.kind, 'allow', 'plugin skill allowed-tools leaves read alone')
+  } finally {
+    await rm(project, { recursive: true, force: true })
+    await rm(plugin, { recursive: true, force: true })
+  }
+})

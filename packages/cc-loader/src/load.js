@@ -23,6 +23,8 @@ import { discoverPluginRoot, discoverMarketplace } from './plugin.js'
  * @param {number} [opts.globalSkillRank=160]
  * @param {string[]} [opts.pluginRoots] - plugin dirs to inventory (M4).
  * @param {string[]} [opts.marketplaceRoots] - marketplace dirs to inventory (M4).
+ * @param {number} [opts.pluginSkillRank=170] - plugin component rank (higher
+ *   than global 160 so project/global entries win on name clashes).
  * @returns {Promise<object>} IR { cwd, projectRoot, components, warnings, report }
  */
 export async function loadClaude(opts = {}) {
@@ -107,8 +109,9 @@ export async function loadClaude(opts = {}) {
   // namespacing themselves.
   const plugins = []
   const marketplaces = []
+  const pluginSkillRank = opts.pluginSkillRank ?? 170
   for (const root of opts.pluginRoots ?? []) {
-    const plugin = await discoverPluginRoot(root, { warn: (m) => warnings.push(m) })
+    const plugin = await discoverPluginRoot(root, { skillRank: pluginSkillRank, warn: (m) => warnings.push(m) })
     warnings.push(...plugin.warnings)
     plugins.push(plugin)
   }

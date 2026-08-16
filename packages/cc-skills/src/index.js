@@ -14,7 +14,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { loadClaude, parseFrontmatter, expandCcToolToDsh } from 'dsh-cc-loader'
+import { loadClaude, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
 
 export const name = 'cc-skills'
 export const inject = ['skills']
@@ -34,6 +34,12 @@ export const Config = z.object({
   globalSkillRank: z.number().default(160),
   globalSkillSource: z.string().default('user-claude'),
   homeDir: z.string(),
+  // ── plugin roots (M4c) ────────────────────────────────────────────────────
+  // Plugin skills/commands are exposed as `plugin-<plugin>-<name>` (DSH skill
+  // names are strict kebab-case; CC's `<plugin>:<name>` colon does not fit).
+  // Rank defaults above global (160) so project/global entries win clashes.
+  pluginRoots: z.array(z.string()).default([]),
+  pluginSkillRank: z.number().default(170),
   // ── skill tool-scope (allowed-tools / disallowed-tools) ──────────────────
   // CC semantics: while a skill is active (the round it was invoked in), tools
   // listed in allowed-tools run without approval and tools listed in
@@ -52,6 +58,8 @@ export function apply(ctx, config = {}) {
     globalClaudeDir: config.globalClaudeDir,
     projectSkillRank: config.skillRank,
     globalSkillRank: config.globalSkillRank,
+    pluginRoots: config.pluginRoots,
+    pluginSkillRank: config.pluginSkillRank,
   })
   ctx.logger.info('cc-skills: provider registered (project .claude + global ~/.claude)')
 
@@ -111,6 +119,27 @@ class CcSkillsProvider {
         resourceBase: c.resourceBase,
         path: c.locator.path,
       })
+    }
+    // Plugin skills/commands (M4c): namespaced `plugin-<plugin>-<name>`.
+    for (const plugin of ir.components.plugins) {
+      const pushPlugin = (entry) => {
+        if (entry.status !== 'DIRECT' && entry.status !== 'ADAPTED') return
+        const name = pluginComponentName(plugin.name, entry.name)
+        out.push({
+          name,
+          description: entry.description,
+          ...(entry.whenToUse !== undefined ? { whenToUse: entry.whenToUse } : {}),
+          invocation: entry.invocation,
+          source: entry.source,
+          provider: this.name,
+          rank: entry.rank,
+          locator: entry.locator,
+          resourceBase: entry.resourceBase,
+          path: entry.locator.path,
+        })
+      }
+      for (const s of plugin.components.skills) pushPlugin(s)
+      for (const c of plugin.components.commands) pushPlugin(c)
     }
     for (const w of ir.warnings) this.ctx.logger.warn(`cc-skills: ${w}`)
     return out
@@ -223,9 +252,12 @@ async function activateSkillScope(ctx, agent, skillName, loaderOpts) {
   }
   // Both skills and commands carry allowed-tools / disallowed-tools in CC
   // frontmatter (commands are user-invocable slash commands with the same
-  // tool-scope semantics). Look up either by name.
+  // tool-scope semantics). Look up by the DSH-facing name: project/global
+  // entries match directly; plugin entries match their namespaced
+  // `plugin-<plugin>-<name>` form (M4c).
   const skill = ir.components.skills.find((s) => s.name === skillName)
     ?? ir.components.commands.find((c) => c.name === skillName)
+    ?? findPluginComponent(ir, skillName)
   if (skill === undefined) {
     log(ctx, 'info', `skill/command "${skillName}" not in IR — no tool scope`)
     return
@@ -266,6 +298,19 @@ function clearAgentScope(agentId, newDisposers = []) {
     }
   }
   if (newDisposers.length === 0) agentScopes.delete(agentId)
+}
+
+/**
+ * Find a plugin skill/command by its namespaced DSH name (`plugin-<plugin>-<n>`).
+ * Returns the IR entry (name still the raw CC name; the adapter namespaces).
+ */
+function findPluginComponent(ir, skillName) {
+  for (const plugin of ir.components.plugins) {
+    for (const entry of [...plugin.components.skills, ...plugin.components.commands]) {
+      if (pluginComponentName(plugin.name, entry.name) === skillName) return entry
+    }
+  }
+  return undefined
 }
 
 /**
