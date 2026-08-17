@@ -2,7 +2,7 @@
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { findProjectRoot, collectClaudeDir, discoverRules } from './skills.js'
+import { findProjectRoot, findClaudeProjectRoot, collectClaudeDir, discoverRules } from './skills.js'
 import { discoverSettings, mergeSettings } from './settings.js'
 import { parseRulesFor, removedToolNames, classifyComponents } from './classify.js'
 import { STATUS } from './classify.js'
@@ -30,12 +30,16 @@ import { discoverPluginRoot, discoverMarketplace } from './plugin.js'
 export async function loadClaude(opts = {}) {
   const cwd = opts.cwd ?? process.cwd()
   const homeDir = opts.homeDir ?? homedir()
-  const markers = opts.projectRootMarkers ?? ['.git']
   const projectSkillRank = opts.projectSkillRank ?? 150
   const globalSkillRank = opts.globalSkillRank ?? 160
   const warnings = []
 
-  const projectRoot = await findProjectRoot(cwd, markers)
+  // Project root: explicit projectRootMarkers wins (caller control, e.g.
+  // cc-mcp's configurable markers); otherwise CC semantics — closest
+  // .claude/ directory, falling back to the .git root, home excluded.
+  const projectRoot = opts.projectRootMarkers !== undefined
+    ? await findProjectRoot(cwd, opts.projectRootMarkers)
+    : await findClaudeProjectRoot(cwd, { homeDir })
   const skills = []
   const commands = []
   const rules = []
@@ -66,7 +70,10 @@ export async function loadClaude(opts = {}) {
   warnings.push(...catalog.warnings)
 
   // Permissions: discover the three settings files and merge.
-  const discovered = await discoverSettings(cwd, { homeDir, projectRootMarkers: markers })
+  const discovered = await discoverSettings(cwd, {
+    homeDir,
+    ...(opts.projectRootMarkers !== undefined ? { projectRootMarkers: opts.projectRootMarkers } : {}),
+  })
   const merged = mergeSettings(discovered)
   const parsed = parseRulesFor(merged)
   for (const invalid of parsed.invalid) {
@@ -147,9 +154,11 @@ export async function loadClaude(opts = {}) {
 export async function loadPermissions(opts = {}) {
   const cwd = opts.cwd ?? process.cwd()
   const homeDir = opts.homeDir ?? homedir()
-  const markers = opts.projectRootMarkers ?? ['.git']
   const warnings = []
-  const discovered = await discoverSettings(cwd, { homeDir, projectRootMarkers: markers })
+  const discovered = await discoverSettings(cwd, {
+    homeDir,
+    ...(opts.projectRootMarkers !== undefined ? { projectRootMarkers: opts.projectRootMarkers } : {}),
+  })
   const merged = mergeSettings(discovered)
   const parsed = parseRulesFor(merged)
   for (const invalid of parsed.invalid) {

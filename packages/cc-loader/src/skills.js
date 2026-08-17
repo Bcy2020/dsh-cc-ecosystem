@@ -24,6 +24,52 @@ export async function findProjectRoot(cwd, markers = ['.git']) {
   }
 }
 
+/**
+ * Claude Code project-root discovery: the closest directory containing a
+ * `.claude/` directory IS the project configuration root — Claude Code walks
+ * up from the cwd looking for a `.claude/` directory (confirmed by
+ * anthropics/claude-code#80791: "Claude Code discovers project-level settings
+ * by walking up from the current working directory looking for a .claude/
+ * directory"), NOT the git root.
+ *
+ * Fallback: when no `.claude/` exists on the walk, fall back to the closest
+ * `.git` root (compat: repositories without a `.claude/` still resolve).
+ *
+ * Home-directory guard: `~/.claude` (Claude Code's global config dir) and a
+ * git-backed home are NEVER treated as a project root — the walk stops at
+ * home. Without the guard, every session outside a project would resolve its
+ * root to the user's home directory.
+ *
+ * @param {string} cwd - session working directory.
+ * @param {object} [opts] - { homeDir } excluded from root resolution;
+ *   { stopAt } optional upper walk boundary (directory at or above which the
+ *   walk stops — primarily a test seam so walk-top markers on the real
+ *   machine cannot interfere; callers normally leave it unset).
+ * @returns {Promise<string | undefined>} project root directory.
+ */
+export async function findClaudeProjectRoot(cwd, opts = {}) {
+  const homeDir = opts.homeDir
+  const stopAt = opts.stopAt
+  const isHome = (dir) => homeDir !== undefined && dir === homeDir
+  const atStop = (dir) => stopAt !== undefined && dir === stopAt
+  // 1. Closest .claude/ directory (CC project-scope semantics), home excluded.
+  let current = resolve(cwd)
+  while (true) {
+    if (!isHome(current) && !atStop(current) && await pathExists(join(current, '.claude'))) return current
+    const parent = dirname(current)
+    if (parent === current || atStop(current)) break
+    current = parent
+  }
+  // 2. Fallback: closest .git root, home excluded.
+  current = resolve(cwd)
+  while (true) {
+    if (!isHome(current) && !atStop(current) && await pathExists(join(current, '.git'))) return current
+    const parent = dirname(current)
+    if (parent === current || atStop(current)) return undefined
+    current = parent
+  }
+}
+
 export async function pathExists(path) {
   try { await stat(path); return true } catch { return false }
 }

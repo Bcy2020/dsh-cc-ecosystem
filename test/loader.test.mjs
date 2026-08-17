@@ -317,7 +317,7 @@ test('loadClaude: global ~/.claude merged with lower rank', async () => {
       '---', 'name: global-skill', 'description: A global skill', '---', 'global body',
     ].join('\n'))
     writeFileSync(join(dir, '.git'), '')
-    const ir = await loadClaude({ cwd: dir, homeDir: home, enableGlobal: true })
+    const ir = await loadClaude({ cwd: dir, homeDir: home, enableGlobal: true, projectRootMarkers: ['.git'] })
     assert.equal(ir.components.skills.length, 1)
     assert.equal(ir.components.skills[0].source, 'user-claude')
     assert.equal(ir.components.skills[0].rank, 160)

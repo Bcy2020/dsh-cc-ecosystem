@@ -9,18 +9,22 @@
 
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { findProjectRoot, pathExists, readTextSafe } from './skills.js'
+import { findProjectRoot, findClaudeProjectRoot, pathExists, readTextSafe } from './skills.js'
 
 /**
  * Discover the three settings files for a cwd.
  * @param {string} cwd
  * @param {{ homeDir?: string, projectRootMarkers?: string[] }} [opts]
+ *   projectRootMarkers: explicit markers use findProjectRoot; otherwise CC
+ *   semantics (closest .claude/ directory, .git fallback, home excluded).
  * @returns {Promise<{ projectRoot?: string, user?: Source, project?: Source, local?: Source }>}
  *   Source = { scope, path, data } or undefined when absent/unreadable.
  */
 export async function discoverSettings(cwd, opts = {}) {
   const homeDir = opts.homeDir ?? homedir()
-  const projectRoot = await findProjectRoot(cwd, opts.projectRootMarkers)
+  const projectRoot = opts.projectRootMarkers !== undefined
+    ? await findProjectRoot(cwd, opts.projectRootMarkers)
+    : await findClaudeProjectRoot(cwd, { homeDir })
   const userPath = join(homeDir, '.claude', 'settings.json')
   const out = {}
   if (projectRoot !== undefined) {

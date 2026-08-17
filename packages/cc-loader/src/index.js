@@ -12,7 +12,7 @@
 export { loadClaude, loadPermissions } from './load.js'
 export {
   discoverSkills, discoverCommands, collectClaudeDir, discoverRules,
-  findProjectRoot, parseFrontmatter, isSkillName, pathExists, readTextSafe,
+  findProjectRoot, findClaudeProjectRoot, parseFrontmatter, isSkillName, pathExists, readTextSafe,
 } from './skills.js'
 export { discoverSettings, mergeSettings } from './settings.js'
 export {

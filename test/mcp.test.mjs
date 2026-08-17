@@ -182,7 +182,7 @@ test('loadClaude: components.mcp populated from project .mcp.json', async () => 
         legacy: { type: 'sse', url: 'https://mcp.example.com/sse' },
       },
     }))
-    const ir = await loadClaude({ cwd: t.dir, enableGlobal: false })
+    const ir = await loadClaude({ cwd: t.dir, enableGlobal: false, projectRootMarkers: ['.git'] })
     const servers = ir.components.mcp.servers
     assert.equal(servers.length, 2)
     const runapi = servers.find((s) => s.serverName === 'runapi')
@@ -198,7 +198,7 @@ test('loadClaude: no .mcp.json → empty mcp component', async () => {
   const t = tmpTree()
   try {
     mkdirSync(join(t.dir, '.git'))
-    const ir = await loadClaude({ cwd: t.dir, enableGlobal: false })
+    const ir = await loadClaude({ cwd: t.dir, enableGlobal: false, projectRootMarkers: ['.git'] })
     assert.deepEqual(ir.components.mcp.servers, [])
   } finally { t.cleanup() }
 })
