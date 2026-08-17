@@ -37,6 +37,7 @@ export const Config = Schema.object({
   idleTimeoutMs: Schema.number().default(300000),
   toolCallTimeoutMs: Schema.number().default(60000),
   watchProject: Schema.boolean().default(true),
+  projectRootMarkers: Schema.array(Schema.string()).default(['.git', '.dsh', '.claude']),
 })
 
 const DEFAULT_CALL_TIMEOUT_MS = 60000
@@ -298,7 +299,7 @@ async function wireAgent(ctx, agent, config) {
     return
   }
   const state = createController(ctx, agent, agentCtx, cwd, config)
-  const projectRoot = config.enableProject ? await findProjectRoot(cwd) : undefined
+  const projectRoot = config.enableProject ? await findProjectRoot(cwd, config.projectRootMarkers) : undefined
   state.projectRoot = projectRoot
   agentStates.set(agent.id, state)
   attachWatcher(state)
