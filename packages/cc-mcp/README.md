@@ -70,6 +70,7 @@ directory paths inside the config, not module specifiers.
 | `idleTimeoutMs` | `300000` | idle disconnect (0 = never) |
 | `toolCallTimeoutMs` | `60000` | per-call timeout |
 | `watchProject` | `true` | hot-reload the project `.mcp.json` |
+| `projectRootMarkers` | `['.git', '.dsh', '.claude']` | directory names that mark a project root when walking up from the session cwd; the first ancestor containing any marker wins. `.dsh` / `.claude` let projects without a `.git` repo still resolve their root |
 
 ## Example
 
