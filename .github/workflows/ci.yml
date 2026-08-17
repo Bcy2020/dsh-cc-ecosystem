@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install per-package dependencies
+        shell: bash
+        run: |
+          set -e
+          for d in cc-loader cc-skills cc-permissions cc-agents cc-hooks cc-mcp; do
+            echo "==> packages/$d"
+            (cd "packages/$d" && npm install --no-audit --no-fund)
+          done
+
+      - name: Syntax check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Pack check (tarballs must build)
+        shell: bash
+        run: |
+          set -e
+          for d in cc-loader cc-skills cc-permissions cc-agents cc-hooks cc-mcp; do
+            echo "==> pack $d"
+            (cd "packages/$d" && npm pack --dry-run >/dev/null)
+          done

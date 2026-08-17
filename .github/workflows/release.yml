@@ -1,0 +1,61 @@
+name: Release
+
+# npm publish for the six dsh-cc packages, in dependency order (dsh-cc-loader
+# first). Triggered by a `v*` tag (e.g. v0.1.1). Requires the repository
+# Secret NPM_TOKEN — a granular access token with read+write on the six
+# packages and "2FA bypass" enabled (the account uses 2FA).
+#
+# After the tag is pushed and the workflow succeeds, create a GitHub Release
+# from the tag with release notes.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish dsh-cc-loader
+        working-directory: packages/cc-loader
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish dsh-cc-skills
+        working-directory: packages/cc-skills
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish dsh-cc-permissions
+        working-directory: packages/cc-permissions
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish dsh-cc-agents
+        working-directory: packages/cc-agents
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish dsh-cc-hooks
+        working-directory: packages/cc-hooks
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish dsh-cc-mcp
+        working-directory: packages/cc-mcp
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
