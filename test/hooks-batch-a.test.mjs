@@ -330,10 +330,15 @@ test('batch-A: WIRED_EVENTS covers the 11 wired events', () => {
   ])
 })
 
-test('demo hooks.json: 19 hooks across 11 events — all five handler types parse, nothing skipped', async () => {
-  const { readFileSync } = await import('node:fs')
+test('demo hooks.json: 19 hooks across 11 events — all five handler types parse, nothing skipped', async (t) => {
+  const { readFileSync, existsSync } = await import('node:fs')
   const { parseHooksConfig } = await import('../packages/cc-hooks/src/parse.js')
-  const raw = JSON.parse(readFileSync(join(demoRoot, '.claude', 'hooks', 'hooks.json'), 'utf8'))
+  const demoFile = join(demoRoot, '.claude', 'hooks', 'hooks.json')
+  if (!existsSync(demoFile)) {
+    t.skip('cc-demo-project not present (local-machine-only fixture)')
+    return
+  }
+  const raw = JSON.parse(readFileSync(demoFile, 'utf8'))
   const { config, skipped } = parseHooksConfig(raw)
 
   // 12 events carry hooks (the 11 wired plus Notification, whose http hook is
