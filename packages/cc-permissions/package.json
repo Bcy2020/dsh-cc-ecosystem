@@ -1,7 +1,7 @@
 {
   "name": "dsh-cc-permissions",
-  "version": "0.1.0",
-  "description": "Enforce Claude Code permission rules (.claude/settings.json allow/deny/ask, deny>ask>allow) in DSH via a tools/pre-execute gate. Reads CC settings as a read-only source; DSH-side approvals never write back to .claude.",
+  "version": "0.2.0",
+  "description": "Enforce Claude Code permission rules (.claude/settings.json allow/deny/ask, deny>ask>allow) in DSH via a tools/pre-execute gate; CC allow rules auto-answer the approval/request seam (incl. sandbox escalation). Reads CC settings as a read-only source; DSH-side approvals never write back to .claude.",
   "type": "module",
   "main": "src/index.js",
   "exports": {

@@ -12,7 +12,7 @@ Load Claude Code `.claude/` assets (skills, commands, rules, permissions, agents
 |---|---|---|
 | [dsh-cc-loader](packages/cc-loader) | 共享解析层:`.claude`(项目 + 全局 `~/.claude`)→ 内存 IR;组件分类 DIRECT/ADAPTED/UNSUPPORTED/BLOCKED;权限规则语法解析与 deny→ask→allow 求值;agent 目录发现与分类;plugin.json 解析 + marketplace 发现 + plugin 根盘点(M4) | ✅ M1 / M4 |
 | [dsh-cc-skills](packages/cc-skills) | 适配器:IR skills/commands → DSH skill provider;rules 按 CC `prependUserContext` 信封注入会话(仅顶层会话) | ✅ M1 |
-| [dsh-cc-permissions](packages/cc-permissions) | 适配器:`tools/pre-execute` 门强制 CC 权限规则;裸名 deny 隐藏工具;`defaultMode=dontAsk` → 审批 never;`enableAllProjectMcpServers` → 项目 MCP 工具自动 allow(M4) | ✅ M1.5 / M4 |
+| [dsh-cc-permissions](packages/cc-permissions) | 适配器:`tools/pre-execute` 门强制 CC 权限规则;裸名 deny 隐藏工具;`defaultMode=dontAsk` → 审批 never;`enableAllProjectMcpServers` → 项目 MCP 工具自动 allow(M4);**`allow` 规则自动应答 `approval/request`(含沙箱提升,CC 语义 = 免审批完整放行)** | ✅ M1.5 / M4 |
 | [dsh-cc-agents](packages/cc-agents) | 适配器:`.claude/agents`(身份锚定子代理)→ 会话启动注入 agent 目录(CC @-mention 语义)+ `cc_agent` 派发工具(persona = 正文,`tools`/`disallowedTools` → toolFilter,`skills` 预载,`model` 经 `modelAliases` 映射);插件 agent 合并(plugin-<name>-<agent> 命名空间, M4c) | ✅ M2 / M4c |
 | [dsh-cc-hooks](packages/cc-hooks) | 适配器:发现项目/全局/插件 `hooks.json` → 合并 → 经 `dsh-hook-protocol`(官方库)按 CC 语义运行(7 事件,command 型),per-session 发现突破官方桥进程级限制 | ✅ M2 |
 | [dsh-cc-mcp](packages/cc-mcp) | 适配器:发现 CC MCP 配置(项目根 `.mcp.json` + 插件 `.mcp.json`/plugin.json 内联 `mcpServers`)→ 经官方 `@modelcontextprotocol/sdk` 运行时注册为 DSH 工具(项目级 `mcp__<server>__<tool>`,插件级 `mcp__plugin_<name>_<server>__<tool>` CC 官方命名);env 值运行时展开不落盘;lazy 连接 + idle 回收 + `.mcp.json` 热重载 | ✅ M3 |
