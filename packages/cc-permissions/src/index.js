@@ -14,6 +14,7 @@ import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { loadPermissions, evaluateCall } from 'dsh-cc-loader'
+import { decideApproval } from './approval.js'
 
 export const name = 'cc-permissions'
 
@@ -24,6 +25,11 @@ export const Config = z.object({
   hideDeniedTools: z.boolean().default(true),
   // Map CC defaultMode: dontAsk → approval policy never (per session).
   enableDefaultMode: z.boolean().default(true),
+  // Auto-answer approval/request (incl. sandbox escalation) when the call
+  // matches a CC allow rule — CC semantics: allow = run without asking.
+  // Granting is one-shot and rule-scoped; deny/ask rules and unmatched calls
+  // still reach the human answerer.
+  autoApproveAllowed: z.boolean().default(true),
   homeDir: z.string(),
   projectRootMarkers: z.array(z.string()).default(['.git']),
 })
@@ -99,6 +105,51 @@ export function apply(ctx, config = {}) {
     }
     return next()
   })
+
+  // ── allow → approval seam: approval/request auto-answerer ─────────────────
+  // CC allow rules are the COMPLETE gate: an allowed command must not hit the
+  // human answerer, including when the file sandbox denies a file effect and
+  // the model retries with `sandbox_permissions` (which raises an
+  // approval/request for the escalation). This listener answers such requests
+  // `allowed-once` when the underlying tool call matches a CC allow rule; the
+  // real arguments come from the session log (`tool/call` by callId), never
+  // from the model-written reason. Deny/ask rules and unmatched calls defer.
+  if (config.autoApproveAllowed !== false) {
+    ctx.on('approval/request', async (req, next) => {
+      try {
+        const events = req.agent?.session?.events
+        if (!Array.isArray(events)) return next()
+        const cwd = req.agent?.session?.header?.cwd ?? process.cwd()
+        let loaded
+        try {
+          loaded = await permissionsFor(cwd)
+        } catch (error) {
+          ctx.logger.warn(`cc-permissions: approval auto-answer load failed: ${String(error)}`)
+          return next()
+        }
+        const perm = loaded.permissions
+        if (perm === undefined) return next()
+        if (perm.status !== 'DIRECT' && perm.enableAllProjectMcpServers !== true) return next()
+        const decision = decideApproval({
+          events,
+          callId: req.callId,
+          toolName: req.toolName,
+          parsed: perm.parsed,
+          env: { cwd: loaded.cwd, homeDir, projectRoot: loaded.projectRoot },
+          enableAllProjectMcpServers: perm.enableAllProjectMcpServers === true,
+          isProjectMcpTool: (name) => name.startsWith('mcp__') && !name.startsWith('mcp__plugin_'),
+        })
+        if (decision === 'allow') {
+          ctx.logger.info(`cc-permissions: AUTO-APPROVE ${req.toolName}${req.callId !== undefined ? ` call ${req.callId}` : ''} — matched a CC allow rule`)
+          return 'allowed-once'
+        }
+        return next()
+      } catch (error) {
+        ctx.logger.warn(`cc-permissions: approval auto-answer failed: ${String(error)}`)
+        return next()
+      }
+    }, { prepend: true })
+  }
 
   // ── bare-name deny → hide the tool from the model ─────────────────────────
   if (config.hideDeniedTools !== false) {

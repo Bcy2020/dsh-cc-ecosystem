@@ -4,7 +4,7 @@
   "description": "Load Claude Code .claude/ assets and plugins into DeepSeek Harness — monorepo root (no workspace management: each package installs its own deps).",
   "type": "module",
   "scripts": {
-    "test": "node --test test/loader.test.mjs test/agents.test.mjs test/mcp.test.mjs test/mcp-adapter.test.mjs test/lsp.test.mjs test/plugin.test.mjs test/hooks-batch-a.test.mjs test/hooks-matrix.test.mjs test/hooks-merge.test.mjs packages/cc-skills/test/scope.test.mjs packages/cc-agents/test/persona.test.mjs packages/cc-mcp/test/mcp-smoke.test.mjs packages/cc-permissions/test/gate.test.mjs",
+    "test": "node --test test/loader.test.mjs test/agents.test.mjs test/mcp.test.mjs test/mcp-adapter.test.mjs test/lsp.test.mjs test/plugin.test.mjs test/hooks-batch-a.test.mjs test/hooks-matrix.test.mjs test/hooks-merge.test.mjs packages/cc-skills/test/scope.test.mjs packages/cc-agents/test/persona.test.mjs packages/cc-mcp/test/mcp-smoke.test.mjs packages/cc-permissions/test/gate.test.mjs packages/cc-permissions/test/approval.test.mjs",
     "test:pack": "npm pack --dry-run --workspaces 2>/dev/null || (cd packages/cc-loader && npm pack --dry-run && cd ../cc-skills && npm pack --dry-run && cd ../cc-permissions && npm pack --dry-run && cd ../cc-agents && npm pack --dry-run && cd ../cc-hooks && npm pack --dry-run && cd ../cc-mcp && npm pack --dry-run)",
     "check": "node scripts/check.mjs"
   },
