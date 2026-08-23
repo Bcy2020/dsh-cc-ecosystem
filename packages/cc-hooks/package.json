@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-hooks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Run unmodified Claude Code hooks in DSH with per-session discovery: project .claude/hooks + global ~/.claude/hooks + plugin dirs. All five handler types execute (command/http/mcp_tool/prompt/agent) through @deepseek-ai/dsh-hook-protocol (11/31 wired events, if-field filtering, official event×type support matrix). Breaks the official bridge's process-level single-config limit.",
   "type": "module",
   "main": "src/index.js",
@@ -26,31 +26,19 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "dsh-cc-loader": "^0.1.0"
+    "dsh-cc-loader": "^0.1.0",
+    "@deepseek-ai/dsh-hook-protocol": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.7",
+    "@deepseek-ai/schemastery": "^3.18.1"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-hook-protocol": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
-    "@deepseek-ai/schemastery": "3.18.1"
+    "@deepseek-ai/cordis": "4.0.1"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-hook-protocol": "*",
-    "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/cordis": "*"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
-      "optional": true
-    },
-    "@deepseek-ai/dsh-hook-protocol": {
-      "optional": true
-    },
-    "@deepseek-ai/dsh-llm": {
-      "optional": true
-    },
-    "@deepseek-ai/schemastery": {
       "optional": true
     }
   },

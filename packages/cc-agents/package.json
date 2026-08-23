@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-agents",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Load Claude Code .claude/agents (identity-anchored subagents: frontmatter + system-prompt body) into DSH delegation via the persona channel.",
   "type": "module",
   "main": "src/index.js",
@@ -28,20 +28,17 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "dsh-cc-loader": "^0.1.0"
+    "dsh-cc-loader": "^0.1.0",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.7",
+    "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-llm": "*",
     "@deepseek-ai/dsh-subagent": "*",
-    "@deepseek-ai/dsh-tools": "*",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/dsh-tools": "*"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
-      "optional": true
-    },
-    "@deepseek-ai/dsh-llm": {
       "optional": true
     },
     "@deepseek-ai/dsh-subagent": {
@@ -49,14 +46,7 @@
     },
     "@deepseek-ai/dsh-tools": {
       "optional": true
-    },
-    "@deepseek-ai/schemastery": {
-      "optional": true
     }
-  },
-  "devDependencies": {
-    "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/schemastery": "3.18.1"
   },
   "engines": {
     "node": ">=20"

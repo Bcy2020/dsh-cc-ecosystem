@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-loader",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared parse layer for the dsh-cc ecosystem: parses Claude Code .claude/ (project + global) into a standalone .dsh intermediate representation (IR), classifying every component DIRECT/ADAPTED/UNSUPPORTED/BLOCKED and filtering unsupported ones out.",
   "type": "module",
   "main": "src/index.js",
