@@ -120,8 +120,19 @@ JSON 里是普通 key,解析通过但暂不执行(parsed-but-inert)。
 | `command` | payload JSON → stdin | exit 0 stdout JSON / exit 2 stderr | exit 2 / JSON 决策 | 600s(UserPromptSubmit 30s) |
 | `http` | payload JSON → POST body | 2xx JSON object body 按 command 规则解析 | 仅 2xx + JSON 决策;**状态码不能阻断** | 600s(UserPromptSubmit 30s) |
 | `mcp_tool` | `input` 字符串值支持 `${tool_input.x}` 替换 | 工具文本按 exit-0 stdout 规则解析 | 文本 JSON 决策 | 600s(UserPromptSubmit 30s) |
-| `prompt` | `$ARGUMENTS` 替换 payload → 单轮 LLM | `{"ok": true}` / `{"ok": false, "reason"}` | ok=false 阻断 | 30s |
+| `prompt` | 会话历史(`session.deriveMessages()`,与主请求同前缀 → 缓存命中)+ 末尾 user(prompt,无 `$ARGUMENTS` 时输入 JSON 自动追加,CC 官方)+ **JSON-only 输出约束** | `{"ok": true}` / `{"ok": false, "reason"}` | ok=false 阻断 | 30s |
 | `agent` | 同 prompt → subagent(默认关 background,等前台答案) | 同上 | ok=false 阻断 | 60s |
+
+- **prompt 输入规则(CC 官方)**:`$ARGUMENTS` 是 hook 输入 JSON 的占位符;**模板里
+  没有 `$ARGUMENTS` 时输入 JSON 自动追加到 prompt 末尾**。
+- **prompt hook 携带完整会话上下文**:消息 = `agent.session.deriveMessages()`
+  (与主 agent 请求**字节一致的前缀** → provider prompt cache 命中,多次 hook
+  调用接近免费) + 末尾一条 user 消息(hook prompt + 输入数据)。Stop 时机
+  `deriveMessages()` 已含本轮最终 assistant 消息,故 prompt 如"回顾本轮操作"
+  能看到 agent 刚做了什么(改了文件、没写 hot.md…),不再盲猜。
+- **模型路由 = 调用 agent 的 provider/model**(DSH 无独立 fast-model 池;
+  `hook.model` 可覆盖)。LLM 只回 JSON——实现强制追加 JSON-only 契约,模型
+  不包 prose/围栏亦能解码(代码围栏仍容忍)。
 
 - http 失败(非 2xx / 非 JSON 体 / 连接失败 / 超时)→ 非阻断错误,继续;`headers`
   值支持 `$VAR`/`${VAR}` 插值,仅 `allowedEnvVars` 白名单内变量被解析,未列入 → 空串
@@ -153,6 +164,16 @@ JSON 里是普通 key,解析通过但暂不执行(parsed-but-inert)。
   内命令;前置 `VAR=value` 剥离;**规则无法解析 → fail-open 运行**(CC 官方)
 - matcher 同时匹配 DSH 工具名(`bash`)与 CC 桶名(`Bash`),CC 原样配置直接生效
 
+### Stop / SubagentStop payload:`last_assistant_message`
+
+CC 官方 Stop/SubagentStop input 携带 `last_assistant_message`(agent 本轮回合的
+最终回复文本),使 hook 无需解析 transcript 即可判断刚结束的回合做了什么。
+本插件从 session 事件流取最后一条 `assistant/message` 的 **text 块**(reasoning
+块排除)填充该字段;无先前回复时降级为空串。**prompt/agent 类型 hook 依赖此
+字段**:它们的 LLM/子代理是裸调用、无工具可读 transcript,若缺失则无法得知
+"本轮是否产生修改",只能默认 `{"ok": true}` 放行 → 一个应阻止停止的
+Stop hook(如"有修改未同步 hot.md")会静默失效。
+
 ## 与官方桥的差异
 
 | 官方桥(进程级) | 本插件(per-session) |
@@ -178,7 +199,7 @@ DSH 的 shell 工具把非零退出码渲染成 `[exit code: N]` 标记、`resul
 ## 测试
 
 ```sh
-node --test test/hooks-merge.test.mjs test/hooks-integration.mjs test/hooks-matrix.test.mjs test/hooks-batch-a.test.mjs test/hooks-executors.test.mjs
+node --test test/hooks-merge.test.mjs test/hooks-integration.mjs test/hooks-matrix.test.mjs test/hooks-batch-a.test.mjs test/hooks-executors.test.mjs test/hooks-stop-payload.test.mjs
 ```
 
 覆盖:解析(settings/bare 形态、事件×类型矩阵、非法 matcher 抛错)、
@@ -186,7 +207,8 @@ node --test test/hooks-merge.test.mjs test/hooks-integration.mjs test/hooks-matr
 (deny>ask>allow)、matcher 语义、60% 语法矩阵(465 + 12 特殊)、批次 A(`if`
 过滤语义、PostToolUseFailure 分支、SessionEnd 顶层会话、PreCompact/PostCompact
 manual/auto)、批次 B(http 本地服务器实测、mcp_tool 直调、prompt/agent `{ok}`
-解码、能力缺失降级、runPoint 分发集成)。
+解码、能力缺失降级、runPoint 分发集成)、Stop/SubagentStop payload
+(`last_assistant_message` 携带最终回复文本且不含 reasoning 块;无回复时降级空串)。
 
 ## License
 

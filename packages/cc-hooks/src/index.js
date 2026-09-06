@@ -448,6 +448,23 @@ function lastTurn(agent) {
 }
 
 /**
+ * The text of the most recent assistant message in the agent's log, or `''`
+ * without an agent or before any assistant reply. This is the CC
+ * `last_assistant_message` input: a Stop/SubagentStop hook must be able to see
+ * what the agent just said without parsing the transcript (command hooks can
+ * read the file; a prompt/agent hook is a bare LLM/subagent call and can only
+ * judge from the payload). Reasoning blocks are excluded — CC carries the
+ * visible reply text only.
+ */
+function lastAssistantMessage(agent) {
+  if (!agent?.session?.events) return ''
+  const last = [...agent.session.events].findLast((e) => e.type === 'assistant/message')
+  if (last?.type !== 'assistant/message') return ''
+  const content = last.data?.message?.content
+  return blocksToText(content)
+}
+
+/**
  * Whether a tool result reports a non-zero shell exit code. DSH shell tools
  * return the canonical `{ kind: 'foreground', exitCode, … }` value for a
  * command that ran (even one that failed), so `exitCode !== 0` identifies a
@@ -491,7 +508,11 @@ function postToolPayload(ctx, event, exec, result) {
   return { ...base(ctx, exec.agent, event), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId, tool_response: blocksToText(result.content) }
 }
 function stopPayload(ctx, agent) {
-  return { ...base(ctx, agent, 'Stop'), stop_hook_active: false }
+  return {
+    ...base(ctx, agent, 'Stop'),
+    stop_hook_active: false,
+    last_assistant_message: lastAssistantMessage(agent),
+  }
 }
 /**
  * SessionEnd payload from the CC base plus `reason`. DSH exposes no
@@ -526,6 +547,6 @@ function subagentPayload(ctx, event, info, child) {
     ...base(ctx, child, event),
     agent_id: info.id,
     agent_type: SUBAGENT_TYPE,
-    ...(event === 'SubagentStop' ? { stop_hook_active: false } : {}),
+    ...(event === 'SubagentStop' ? { stop_hook_active: false, last_assistant_message: lastAssistantMessage(child) } : {}),
   }
 }

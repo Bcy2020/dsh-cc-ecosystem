@@ -74,12 +74,21 @@ function contentBlocksToText(content) {
 // ─── $ARGUMENTS / ${path} substitution (official) ────────────────────────────
 
 /**
- * Substitute `$ARGUMENTS` in a prompt/agent hook with the JSON-serialized hook
- * input; a backslash-escaped `\$` renders a literal `$` (CC: `\$1.00` → `$1.00`).
+ * Build the LLM prompt text for a prompt/agent hook from its `prompt` template
+ * and the hook input payload.
+ *
+ * CC official semantics (code.claude.com/docs/en/hooks "Prompt hook
+ * configuration"): `$ARGUMENTS` is a placeholder for the hook input JSON; if it
+ * is NOT present in the prompt, the input JSON is appended to the prompt. A
+ * prompt hook whose template never references the payload (e.g. "review this
+ * turn") must still receive the hook input data, since its LLM call is
+ * otherwise context-blind. A backslash-escaped `\$` renders a literal `$`
+ * (CC: `\$1.00` → `$1.00`).
  */
 export function substituteArguments(prompt, payload) {
   const json = JSON.stringify(payload)
   let out = ''
+  let replaced = false
   let i = 0
   while (i < prompt.length) {
     const ch = prompt[i]
@@ -90,13 +99,15 @@ export function substituteArguments(prompt, payload) {
     }
     if (ch === '$' && prompt.startsWith('$ARGUMENTS', i)) {
       out += json
+      replaced = true
       i += '$ARGUMENTS'.length
       continue
     }
     out += ch
     i += 1
   }
-  return out
+  // No real `$ARGUMENTS` placeholder → append the input JSON (CC).
+  return replaced ? out : `${out}\n${json}`
 }
 
 /** Resolve a dotted path (`tool_input.file_path`) inside the hook input JSON. */
@@ -382,8 +393,38 @@ export function resolveModelRoute(model, agent) {
 }
 
 /**
- * Run one prompt hook: a single LLM call with the `$ARGUMENTS`-substituted
- * prompt; the model's `{ok}` answer is decoded by {@link decodeOkAnswer}.
+ * The hook LLM call's output contract, appended to every prompt-hook prompt:
+ * the model's only job is a JSON decision (CC prompt-hook semantics).
+ */
+const JSON_ONLY_SUFFIX = '\n\nYou are a hook evaluating one condition. Respond with ONLY a single JSON object — no markdown, no prose — of the form {"ok": true} to allow, or {"ok": false, "reason": "explanation"} to block.'
+
+/**
+ * Assemble the message list for a prompt hook. The history is the calling
+ * agent's own `deriveMessages()` — byte-identical prefix to the agent's own
+ * requests, so a provider prompt cache hit makes the hook call nearly free —
+ * followed by one user message carrying the hook's prompt (with the JSON-only
+ * output contract appended). Falls back to a lone user message when no agent /
+ * session is available (diagnostics paths), preserving the old behavior.
+ * @param {object} opts - `{ agent }`.
+ * @param {string} prompt - the `$ARGUMENTS`-substituted hook prompt.
+ * @returns {Message[]} messages to send to the model.
+ */
+function promptHookMessages(opts, prompt) {
+  const session = opts.agent?.session
+  const history = typeof session?.deriveMessages === 'function'
+    ? session.deriveMessages()
+    : []
+  const content = [{ type: 'text', text: prompt + JSON_ONLY_SUFFIX }]
+  const finalMessage = createUserMessage({ content, source: PLUGIN_SOURCE })
+  return history.length > 0 ? [...history, finalMessage] : [finalMessage]
+}
+
+/**
+ * Run one prompt hook: a single LLM call with the calling agent's own
+ * conversation as context and the `$ARGUMENTS`-substituted prompt appended as
+ * the last user message; the model's `{ok}` answer is decoded by
+ * {@link decodeOkAnswer}. The agent's own route (provider/model) is used — DSH
+ * has no separate fast-model pool for hooks.
  */
 export async function runPromptHook(ctx, hook, payload, opts) {
   const started = performance.now()
@@ -406,10 +447,7 @@ export async function runPromptHook(ctx, hook, payload, opts) {
     let text = ''
     let finishKind
     try {
-      const messages = [createUserMessage({
-        content: [{ type: 'text', text: prompt }],
-        source: PLUGIN_SOURCE,
-      })]
+      const messages = promptHookMessages(opts, prompt)
       for await (const chunk of llm.stream({
         provider: route.provider,
         model: route.model,

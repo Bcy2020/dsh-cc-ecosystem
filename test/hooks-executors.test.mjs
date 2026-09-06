@@ -180,6 +180,21 @@ test('substitution: $ARGUMENTS with \\$ escape; ${path} input refs; header env a
   assert.equal(interpolateHeaderValue('Bearer $TOK', undefined, env), 'Bearer $TOK') // no allowlist → verbatim
 })
 
+test('substitution: no $ARGUMENTS placeholder → input JSON appended (CC prompt-hook rule)', () => {
+  const payload = { session_id: 's1', stop_hook_active: false, last_assistant_message: '我改了 README 但没写 hot.md' }
+  // A template with no placeholder must still receive the input data: CC
+  // appends the hook input JSON when `$ARGUMENTS` is absent.
+  assert.equal(
+    substituteArguments('回顾本轮操作判断是否应停止', payload),
+    `回顾本轮操作判断是否应停止\n${JSON.stringify(payload)}`,
+  )
+  // Placeholder present → substituted, no duplicate append.
+  assert.equal(
+    substituteArguments('回顾本轮操作: $ARGUMENTS', payload),
+    `回顾本轮操作: ${JSON.stringify(payload)}`,
+  )
+})
+
 test('timeout defaults follow the official per-type/per-event table', () => {
   assert.equal(defaultTimeoutMsFor('PreToolUse', 'command', 600_000), 600_000)
   assert.equal(defaultTimeoutMsFor('UserPromptSubmit', 'command', 600_000), 30_000)
@@ -405,6 +420,41 @@ test('prompt: {ok} answers decode; $ARGUMENTS substitution; model route fallback
   const r8 = await runPromptHook({ logger: { info: () => {}, warn: (m) => warns8.push(m) }, get: (n) => (n === 'llm' ? llm8 : undefined) }, { prompt: 'x' }, payload, opts)
   assert.equal(r8.output.decision, undefined)
   assert.ok(warns8.some((m) => m.includes('LLM call error')))
+})
+
+test('prompt: session history is prepended (agent context) and JSON-only contract appended', async () => {
+  const { logger } = makeLogger()
+  const payload = { hook_event_name: 'Stop', last_assistant_message: '我改了 README 但没写 hot.md' }
+  // A minimal session whose deriveMessages returns a frozen history — the
+  // same projection a real agent sends in its own requests.
+  const history = [
+    Object.freeze({ role: 'user', content: [{ type: 'text', text: '请修改 README' }], id: 'u1' }),
+    Object.freeze({ role: 'assistant', content: [{ type: 'text', text: '我改了 README 但没写 hot.md' }], id: 'a1' }),
+  ]
+  const agent = {
+    options: { provider: 'p1', model: 'm1' },
+    session: { deriveMessages: () => history },
+  }
+  const opts = { event: 'Stop', expectedEventName: 'Stop', signal: new AbortController().signal, agent }
+  const seen = []
+  const llm = mockLlm(textChunks('{"ok": false, "reason": "先更新 hot.md"}'), seen)
+  const r = await runPromptHook({ logger, get: (n) => (n === 'llm' ? llm : undefined) }, { prompt: '回顾本轮操作判断是否应停止' }, payload, opts)
+  assert.equal(r.output.decision, 'block')
+
+  const messages = seen[0].messages
+  // The full history rides in front of the hook prompt.
+  assert.equal(messages.length, history.length + 1)
+  assert.equal(messages[0], history[0], 'history message identity preserved (cache-friendly)')
+  assert.equal(messages[1], history[1])
+  // Last message: the hook prompt (with $ARGUMENTS-less input appended) + JSON-only contract.
+  const lastText = messages[2].content.map((b) => b.text).join('')
+  assert.ok(lastText.includes('回顾本轮操作判断是否应停止'))
+  assert.ok(lastText.includes(JSON.stringify(payload)), 'input JSON appended when no $ARGUMENTS')
+  assert.ok(lastText.includes('{"ok": false, "reason":'), 'JSON-only output contract present')
+  assert.ok(lastText.includes('no markdown, no prose'))
+  // Route stays on the calling agent's model.
+  assert.equal(seen[0].provider, 'p1')
+  assert.equal(seen[0].model, 'm1')
 })
 
 // ─── agent executor ──────────────────────────────────────────────────────────
