@@ -1,5 +1,16 @@
 # dsh-cc-ecosystem
 
+[![Listed in dsh-market (via awesome-dsh-plugin)](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/dsh-market/dsh-market)
+
+| 包 | 月下载 (npm `latest`) | 版本 |
+|---|---|---|
+| [dsh-cc-loader](https://www.npmjs.com/package/dsh-cc-loader) | ![](https://img.shields.io/npm/dm/dsh-cc-loader?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-loader?style=flat) |
+| [dsh-cc-skills](https://www.npmjs.com/package/dsh-cc-skills) | ![](https://img.shields.io/npm/dm/dsh-cc-skills?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-skills?style=flat) |
+| [dsh-cc-permissions](https://www.npmjs.com/package/dsh-cc-permissions) | ![](https://img.shields.io/npm/dm/dsh-cc-permissions?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-permissions?style=flat) |
+| [dsh-cc-agents](https://www.npmjs.com/package/dsh-cc-agents) | ![](https://img.shields.io/npm/dm/dsh-cc-agents?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-agents?style=flat) |
+| [dsh-cc-hooks](https://www.npmjs.com/package/dsh-cc-hooks) | ![](https://img.shields.io/npm/dm/dsh-cc-hooks?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-hooks?style=flat) |
+| [dsh-cc-mcp](https://www.npmjs.com/package/dsh-cc-mcp) | ![](https://img.shields.io/npm/dm/dsh-cc-mcp?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-mcp?style=flat) |
+
 Load Claude Code `.claude/` assets (skills, commands, rules, permissions, agents, hooks) into DeepSeek Harness as a DSH plugin ecosystem.
 
 把 Claude Code 的 `.claude/` 资产(技能 / 命令 / 规则 / 权限 / 子代理 / hooks)以 DSH 插件生态的形式加载进 DeepSeek Harness。
