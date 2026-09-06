@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-agents",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Load Claude Code .claude/agents (identity-anchored subagents: frontmatter + system-prompt body) into DSH delegation via the persona channel.",
   "type": "module",
   "main": "src/index.js",

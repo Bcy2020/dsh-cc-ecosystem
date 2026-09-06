@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Load Claude Code MCP server configs (.mcp.json / plugin.json inline mcpServers) into DSH as runtime-registered tools: project-root .mcp.json → mcp__<server>__<tool>, plugin MCP → mcp__plugin_<name>_<server>__<tool> (official CC naming). Client bridge on the official @modelcontextprotocol/sdk — no config-row writes, zero-write path preserved.",
   "type": "module",
   "main": "src/index.js",
