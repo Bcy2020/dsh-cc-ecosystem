@@ -34,6 +34,17 @@ export const Config = z.object({
   projectRootMarkers: z.array(z.string()).default(['.git']),
 })
 
+/**
+ * The session's event log as an array, across dsh generations. 0.1.5 replaced
+ * the `events` getter with `snapshotEvents()`; both return the same frozen,
+ * seq-indexed snapshot of the append-only log, so callers are unchanged.
+ */
+function sessionEvents(session) {
+  if (!session) return []
+  if (typeof session.snapshotEvents === 'function') return session.snapshotEvents()
+  return session.events ?? []
+}
+
 export function apply(ctx, config = {}) {
   if (config.enabled === false) return
 
@@ -117,8 +128,8 @@ export function apply(ctx, config = {}) {
   if (config.autoApproveAllowed !== false) {
     ctx.on('approval/request', async (req, next) => {
       try {
-        const events = req.agent?.session?.events
-        if (!Array.isArray(events)) return next()
+        const events = sessionEvents(req.agent?.session)
+        if (events.length === 0) return next()
         const cwd = req.agent?.session?.header?.cwd ?? process.cwd()
         let loaded
         try {

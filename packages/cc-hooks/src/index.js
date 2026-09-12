@@ -440,10 +440,21 @@ export function apply(ctx, config = {}) {
 // --- Per-event stdin payloads (the CC DIALECT shape). Field names match CC's
 // hook input schema; this is the part a bridge owns. ---
 
+/**
+ * The session's event log as an array, across dsh generations. 0.1.5 replaced
+ * the `events` getter with `snapshotEvents()`; both return the same frozen,
+ * seq-indexed snapshot of the append-only log, so callers are unchanged.
+ */
+function sessionEvents(session) {
+  if (!session) return []
+  if (typeof session.snapshotEvents === 'function') return session.snapshotEvents()
+  return session.events ?? []
+}
+
 /** The last open turn number in the agent's log, or 0 without an agent. */
 function lastTurn(agent) {
   if (!agent) return 0
-  const last = [...agent.session.events].findLast((e) => e.type === 'turn/start')
+  const last = sessionEvents(agent.session).findLast((e) => e.type === 'turn/start')
   return last?.type === 'turn/start' ? last.data.turn : 0
 }
 
@@ -457,8 +468,7 @@ function lastTurn(agent) {
  * visible reply text only.
  */
 function lastAssistantMessage(agent) {
-  if (!agent?.session?.events) return ''
-  const last = [...agent.session.events].findLast((e) => e.type === 'assistant/message')
+  const last = sessionEvents(agent?.session).findLast((e) => e.type === 'assistant/message')
   if (last?.type !== 'assistant/message') return ''
   const content = last.data?.message?.content
   return blocksToText(content)

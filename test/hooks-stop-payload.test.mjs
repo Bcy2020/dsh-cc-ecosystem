@@ -55,7 +55,7 @@ function makeCtx() {
   return ctx
 }
 
-function makeAgent(cwd, { withLastReply = true } = {}) {
+function makeAgent(cwd, { withLastReply = true, sessionApi = 'events' } = {}) {
   const events = [{ type: 'turn/start', data: { turn: 1 } }]
   if (withLastReply) {
     events.push({
@@ -71,8 +71,15 @@ function makeAgent(cwd, { withLastReply = true } = {}) {
       },
     })
   }
+  // The 0.1.0/0.1.2 hosts expose the log as `session.events`; dsh 0.1.5
+  // replaced that getter with `snapshotEvents()`. Both return the same frozen
+  // snapshot, and the bridge must read history on either.
+  const header = { id: 'sess-stop', cwd }
+  const session = sessionApi === 'snapshotEvents'
+    ? { header, snapshotEvents: () => Object.freeze([...events]), append: () => {} }
+    : { header, events, append: () => {} }
   return {
-    session: { header: { id: 'sess-stop', cwd }, events, append: () => {} },
+    session,
     inject: () => {},
     steer: () => {},
   }
@@ -115,6 +122,31 @@ test('Stop payload carries last_assistant_message (text blocks only, no reasonin
 
     const payload = JSON.parse(readFileSync(capture, 'utf8'))
     assert.equal(payload.hook_event_name, 'Stop')
+    assert.equal(payload.last_assistant_message, '我修改了 README.md，但没有同步 hot.md。')
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+    rmSync(project, { recursive: true, force: true })
+  }
+})
+
+test('Stop payload reads history through snapshotEvents() (dsh 0.1.5 hosts)', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'cc-hooks-home-'))
+  const { project, capture } = buildProject()
+  try {
+    const ctx = makeCtx()
+    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    const L = ctx._listeners
+
+    const agent = makeAgent(project, { sessionApi: 'snapshotEvents' })
+    L['agent/session-start']({ agent, source: 'test' })
+    await sleep(400)
+
+    await L['agent/turn-stopping']({ agent, turn: 1, signal: new AbortController().signal })
+    await sleep(300)
+
+    const payload = JSON.parse(readFileSync(capture, 'utf8'))
+    assert.equal(payload.hook_event_name, 'Stop')
+    // Without the port this is '' — the hook fires but sees nothing.
     assert.equal(payload.last_assistant_message, '我修改了 README.md，但没有同步 hot.md。')
   } finally {
     rmSync(home, { recursive: true, force: true })
