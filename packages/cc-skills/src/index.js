@@ -168,6 +168,17 @@ class CcSkillsProvider {
 
 // ─── rules section ───────────────────────────────────────────────────────────
 
+/**
+ * The session's event log as an array, across dsh generations. 0.1.5 replaced
+ * the `events` getter with `snapshotEvents()`; both return the same frozen,
+ * seq-indexed snapshot of the append-only log, so callers are unchanged.
+ */
+function sessionEvents(session) {
+  if (!session) return []
+  if (typeof session.snapshotEvents === 'function') return session.snapshotEvents()
+  return session.events ?? []
+}
+
 function registerRulesSection(ctx, config, loaderOpts) {
   const maxBytes = config.rulesMaxBytes ?? 65536
   // Cache built messages per session cwd — pre-step fires every step.
@@ -176,10 +187,11 @@ function registerRulesSection(ctx, config, loaderOpts) {
     const decision = await next()
     if (decision.kind !== 'enter') return decision
     const present = (list) => list.some((m) => m?.source?.kind === 'cc-skills')
+    const events = sessionEvents(agent.session)
     const alreadyInjected = present(messages)
       || present(decision.messages)
       || agent.session.surface.nodes.some((seq) => {
-        const event = agent.session.events[seq]
+        const event = events[seq]
         return event?.type === 'user/message'
           && event.data?.source?.kind === 'cc-skills'
       })

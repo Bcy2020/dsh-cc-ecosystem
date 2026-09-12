@@ -97,6 +97,35 @@ test('apply with tool scope: registers listeners, never throws', async () => {
   assert.ok(true, 'no synchronous throw, no unhandled rejection observed')
 })
 
+test('pre-step: rules dedupe scan reads the log on both host generations', async () => {
+  // The dedupe scan indexes the event log by surface node seq. On dsh 0.1.5
+  // `session.events` is gone (`snapshotEvents()` replaced it), so the old
+  // expression threw "Cannot read properties of undefined (reading '15')" —
+  // once per step, failing every turn. Earlier cases here all used an EMPTY
+  // `surface.nodes`, which never entered the callback and so never caught it.
+  const events = Array.from({ length: 16 }, (_, seq) => (seq === 15
+    ? { type: 'user/message', data: { source: { kind: 'user' } } }
+    : { type: 'turn/start', data: { turn: 1 } }))
+  const generations = {
+    'events (0.1.0/0.1.2)': { surface: { nodes: [15] }, events },
+    'snapshotEvents() (0.1.5)': { surface: { nodes: [15] }, snapshotEvents: () => Object.freeze([...events]) },
+  }
+  for (const [label, sessionApi] of Object.entries(generations)) {
+    const ctx = new Context()
+    const cwd = await fixture()
+    try {
+      ctx.provide('skills', stubSkills())
+      apply(ctx, Config({ homeDir: join(tmpdir(), 'nohome') }))
+      const agent = { id: 'gen', session: { header: { cwd }, ...sessionApi }, ctx: { tools: { restrict: () => () => {} } } }
+      const decision = await ctx.waterfall('agent/pre-step', { agent, messages: [] },
+        () => Promise.resolve({ kind: 'enter', messages: [] }))
+      assert.equal(decision.kind, 'enter', `pre-step survived the dedupe scan on ${label}`)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  }
+})
+
 test('pre-execute: disallowed tool denied while skill active', async () => {
   const ctx = new Context()
   const cwd = await fixture()
