@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-skills",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Load Claude Code .claude/ skills, commands and rules (project + global ~/.claude) into DSH. Fork of dsh-claude-compat (MIT) by biedongbin.",
   "type": "module",
   "main": "src/index.js",

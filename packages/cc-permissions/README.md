@@ -1,7 +1,7 @@
 # dsh-cc-permissions
 
 > [!IMPORTANT]
-> **Only upgrade to `v0.3.0` when upgrading DSH to `0.1.5-rc.2` or later.**
+> **Only upgrade to the `v0.3.x` line when upgrading DSH to `0.1.5-rc.2` or later.**
 > It binds to the 0.1.5 host contracts (`snapshotEvents()` / `eventAt()`,
 > `^0.1.5-rc.2` peer ranges) and **does not work on older DSH**. If your DSH is
 > still `0.1.0-rc.7`–`0.1.1-rc.2`, **do not upgrade** — stay on `v0.2.x`.
