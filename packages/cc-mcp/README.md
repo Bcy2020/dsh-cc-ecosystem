@@ -1,5 +1,12 @@
 # dsh-cc-mcp
 
+> [!IMPORTANT]
+> **Only upgrade to this version when upgrading DSH to `0.1.5-rc.2` or later.**
+> It binds to the 0.1.5 host contracts (`^0.1.5-rc.2` peer ranges for
+> `dsh-subprocess` / `schemastery`) and **does not work on older DSH**. If your
+> DSH is still `0.1.0-rc.7`–`0.1.1-rc.2`, **do not upgrade** — stay on `v0.1.x`.
+> The two lines are mutually exclusive.
+
 Load Claude Code MCP server configs into DeepSeek Harness as **runtime-registered
 tools** — no config-row writes, no restarts for config changes.
 

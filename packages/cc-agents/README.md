@@ -1,5 +1,12 @@
 # dsh-cc-agents
 
+> [!IMPORTANT]
+> **Only upgrade to this version when upgrading DSH to `0.1.5-rc.2` or later.**
+> It binds to the 0.1.5 host contracts (`snapshotEvents()` / `eventAt()`,
+> `^0.1.5-rc.2` peer ranges) and **does not work on older DSH**. If your DSH is
+> still `0.1.0-rc.7`–`0.1.1-rc.2`, **do not upgrade** — stay on `v0.1.x`.
+> The two lines are mutually exclusive.
+
 Load Claude Code **"first kind" agents** (`.claude/agents/*.md`) into DSH as
 delegatable subagents with identity anchoring.
 

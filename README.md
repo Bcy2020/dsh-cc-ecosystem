@@ -2,6 +2,18 @@
 
 [![Listed in dsh-market (via awesome-dsh-plugin)](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/dsh-market/dsh-market)
 
+> [!IMPORTANT]
+> ### `v0.2.0` / cc-permissions `v0.3.0` —— 仅在把 DSH 升级到 `0.1.5-rc.2` 时才需要
+>
+> **本版本是 DSH 0.1.5 的兼容版本,不是功能版本。** 它绑定 0.1.5 的宿主契约
+> (`snapshotEvents()` / `eventAt()`、`ToolCallId`、`^0.1.5-rc.2` 的 peer 范围),
+> **在旧版 DSH 上无法工作**。
+>
+> - ✅ **正在把 DSH 升级到 `0.1.5-rc.2` 及以上** → 必须升级到本版本(否则插件启动失败或运行时报错)
+> - ⛔ **DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2`** → **请勿升级到本版本**,继续使用 `v0.1.x`(cc-permissions `v0.2.x`)
+>
+> 两代版本号是**互斥**的,不存在同时兼容新旧宿主的版本。
+
 | 包 | 月下载 (npm `latest`) | 版本 |
 |---|---|---|
 | [dsh-cc-loader](https://www.npmjs.com/package/dsh-cc-loader) | ![](https://img.shields.io/npm/dm/dsh-cc-loader?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-loader?style=flat) |
