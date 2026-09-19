@@ -47,7 +47,7 @@ import {
   runMcpToolHook,
   runPromptHook,
 } from './executors.js'
-import { ccBucket } from 'dsh-cc-loader'
+import { ccBucket, sessionLastEvent } from 'dsh-cc-loader'
 
 export const name = 'cc-hooks'
 // `shell` is required to run hooks; the rest are read opportunistically via
@@ -443,7 +443,9 @@ export function apply(ctx, config = {}) {
 /** The last open turn number in the agent's log, or 0 without an agent. */
 function lastTurn(agent) {
   if (!agent) return 0
-  const last = [...agent.session.events].findLast((e) => e.type === 'turn/start')
+  // `Session.events` was removed in DSH 0.1.2-alpha.4; sessionLastEvent reads
+  // the log through the new snapshotEvents()/eventAt() surface.
+  const last = sessionLastEvent(agent.session, (e) => e.type === 'turn/start')
   return last?.type === 'turn/start' ? last.data.turn : 0
 }
 
@@ -457,8 +459,7 @@ function lastTurn(agent) {
  * visible reply text only.
  */
 function lastAssistantMessage(agent) {
-  if (!agent?.session?.events) return ''
-  const last = [...agent.session.events].findLast((e) => e.type === 'assistant/message')
+  const last = sessionLastEvent(agent?.session, (e) => e.type === 'assistant/message')
   if (last?.type !== 'assistant/message') return ''
   const content = last.data?.message?.content
   return blocksToText(content)
@@ -484,12 +485,42 @@ function blocksToText(content) {
   return (content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join('')
 }
 
+/**
+ * Best-effort CC `transcript_path` for a hook payload.
+ *
+ * DSH's public `SessionPersistence` service (0.1.5) exposes only
+ * `create`/`open`/`flush`/`stat`/`list` — it declares NO artifact-path accessor.
+ * The JSONL backend does implement one (`locate`), but as a TypeScript
+ * `private` method, i.e. it is not part of the supported contract and a
+ * different persistence provider may not have it at all.
+ *
+ * The previous code was `ctx.get('sessionPersistence')?.locate(header)?.path`.
+ * That optional chain guards the SERVICE, not the method: whenever the service
+ * is registered (the normal case) the member is read and CALLED, so a provider
+ * without `locate` raised `TypeError: …locate is not a function` synchronously
+ * inside every payload builder — killing SessionStart, PreToolUse, Stop, … .
+ *
+ * A missing method and a throwing call therefore both degrade to `''`, which is
+ * exactly what the official bridge ships (`hooks-claude-code` hardcodes
+ * `transcript_path: ''` and records the gap in its README). The field is
+ * populated only where the private accessor genuinely exists.
+ *
+ * @param {object} ctx - the plugin context (`ctx.get('sessionPersistence')`).
+ * @param {{header: object}|undefined} session - the session whose path is wanted.
+ * @returns {string} the on-disk transcript path, or `''` when unavailable.
+ */
+function transcriptPath(ctx, session) {
+  if (session === undefined) return ''
+  let persistence
+  try { persistence = ctx.get('sessionPersistence') } catch { return '' }
+  if (typeof persistence?.locate !== 'function') return ''
+  try { return persistence.locate(session.header)?.path ?? '' } catch { return '' }
+}
+
 function base(ctx, agent, event) {
   return {
     session_id: agent?.session.header.id ?? '',
-    transcript_path: agent === undefined
-      ? ''
-      : ctx.get('sessionPersistence')?.locate(agent.session.header)?.path ?? '',
+    transcript_path: transcriptPath(ctx, agent?.session),
     cwd: agent?.session.header.cwd ?? process.cwd(),
     hook_event_name: event,
   }
@@ -529,7 +560,7 @@ function sessionEndPayload(ctx, agent) {
 function compactPayload(ctx, event, session, trigger) {
   return {
     session_id: session.header.id ?? '',
-    transcript_path: ctx.get('sessionPersistence')?.locate(session.header)?.path ?? '',
+    transcript_path: transcriptPath(ctx, session),
     cwd: session.header.cwd ?? process.cwd(),
     hook_event_name: event,
     trigger,

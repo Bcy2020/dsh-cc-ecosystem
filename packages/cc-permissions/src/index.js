@@ -13,7 +13,7 @@
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
-import { loadPermissions, evaluateCall } from 'dsh-cc-loader'
+import { loadPermissions, evaluateCall, sessionEvents } from 'dsh-cc-loader'
 import { decideApproval } from './approval.js'
 
 export const name = 'cc-permissions'
@@ -117,8 +117,10 @@ export function apply(ctx, config = {}) {
   if (config.autoApproveAllowed !== false) {
     ctx.on('approval/request', async (req, next) => {
       try {
-        const events = req.agent?.session?.events
-        if (!Array.isArray(events)) return next()
+        // `Session.events` was removed in DSH 0.1.2-alpha.4; sessionEvents()
+        // prefers snapshotEvents() and falls back to the legacy array.
+        const events = sessionEvents(req.agent?.session)
+        if (events === undefined) return next()
         const cwd = req.agent?.session?.header?.cwd ?? process.cwd()
         let loaded
         try {

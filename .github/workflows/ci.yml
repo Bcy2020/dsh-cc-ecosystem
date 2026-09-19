@@ -19,14 +19,32 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
+      # `dsh-cc-loader` is the in-repo shared package, and the adapters pin it at
+      # the CURRENT release range. On a release commit that range names a version
+      # the registry does not carry yet (the publish runs from the tag, in
+      # parallel), so a plain `npm install` dies with ETARGET before any test
+      # runs. Point the dependency at the working tree for the duration of the
+      # install — which is also literally what CI means to test — then restore
+      # the real ranges. The next step re-creates the link for the test run.
       - name: Install per-package dependencies
         shell: bash
         run: |
           set -e
+          for d in cc-skills cc-permissions cc-agents cc-hooks cc-mcp; do
+            (cd "packages/$d" && npm pkg set 'dependencies.dsh-cc-loader=file:../cc-loader')
+          done
           for d in cc-loader cc-skills cc-permissions cc-agents cc-hooks cc-mcp; do
             echo "==> packages/$d"
             (cd "packages/$d" && npm install --no-audit --no-fund)
           done
+          git checkout -- packages/*/package.json
+
+      # Redirect each dependent's dsh-cc-loader at this working tree. Without
+      # this the adapter tests run against the last PUBLISHED loader, so a
+      # change to packages/cc-loader/src is invisible to CI — the blind spot
+      # that let the DSH 0.1.5 breakage reach a live profile.
+      - name: Link working-tree dsh-cc-loader
+        run: npm run link
 
       - name: Syntax check
         run: npm run check

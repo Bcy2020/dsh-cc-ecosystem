@@ -21,7 +21,7 @@
 // route) degrades to a warning + neutral outcome — never a crash (approved
 // design: capability-missing → warn, non-blocking).
 
-import { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { parseHookOutput } from '@deepseek-ai/dsh-hook-protocol'
 
 /** Official per-type timeout defaults (s): command/http/mcp_tool 600, prompt 30, agent 60. */
@@ -346,7 +346,7 @@ export async function runMcpToolHook(ctx, hook, payload, opts) {
     let value
     try {
       value = await definition.execute(input, {
-        callId: CallId(nextId()),
+        callId: ToolCallId(nextId()),
         name,
         arguments: input,
         ...(opts.agent !== undefined ? { agent: opts.agent } : {}),
@@ -512,7 +512,7 @@ export async function runAgentHook(ctx, hook, payload, opts) {
     let result
     try {
       result = await tools.execute({
-        callId: CallId(nextId()),
+        callId: ToolCallId(nextId()),
         name: SUBAGENT_TOOL,
         arguments: args,
         agent: opts.agent,

@@ -39,3 +39,6 @@ export {
   evaluateCall, parseRulesFor, splitSubcommands, removedToolNames,
   classifyComponents, STATUS, matchesIfRule,
 } from './classify.js'
+// Session event-log readers. `Session.events` was removed in DSH 0.1.2-alpha.4
+// and is gone in 0.1.5; every plugin read of the log goes through these.
+export { sessionEvents, sessionEventAt, sessionLastEvent } from './session-compat.js'

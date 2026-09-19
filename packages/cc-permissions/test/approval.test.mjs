@@ -182,3 +182,97 @@ test('waterfall: ask rule still defers (human decides)', async () => {
     t.cleanup()
   }
 })
+
+// ─── the 0.1.5 session shape ────────────────────────────────────────────────
+//
+// The listener above used to read `req.agent?.session?.events`, which is
+// `undefined` on DSH >= 0.1.2-alpha.4 (the property was removed). It now goes
+// through `sessionEvents()`. These tests drive the SAME approval/request
+// branch with a session that exposes only the 0.1.5 readers and, crucially,
+// has NO `events` property — the shape that produced `undefined` and silently
+// skipped auto-approval.
+
+/** A 0.1.5-shaped session: snapshotEvents() / eventAt() / seq, no `events`. */
+function newShapeSession(cwd, log) {
+  return {
+    header: { cwd },
+    get seq() { return log.length },
+    eventAt(seq) { return log[seq] },
+    snapshotEvents(from = 0, to = log.length) { return Object.freeze(log.slice(from, to)) },
+  }
+}
+
+function approvalCtxNewShape(projectDir, session) {
+  const ctx = new Context()
+  apply(ctx, Config({ homeDir: join(tmpdir(), 'cc-perm-nohome') }))
+  const ask = (toolName, callId) => ctx.waterfall('approval/request', {
+    agent: { session: session ?? newShapeSession(projectDir, []) },
+    toolName,
+    callId,
+  }, () => 'unavailable')
+  return { ctx, ask }
+}
+
+test('0.1.5 shape: the session really has no `events` property', () => {
+  // Guards the premise: without this the test below could pass vacuously.
+  assert.equal(newShapeSession('C:/proj', []).events, undefined)
+})
+
+test('0.1.5 shape: allow rule answers allowed-once before the human answerer', async () => {
+  const t = tempProject({ permissions: { allow: ['Bash(pytest:*)'] } })
+  try {
+    const log = [event('c1', 'bash', { command: 'pytest -q' })]
+    const { ask } = approvalCtxNewShape(t.dir, newShapeSession(t.dir, log))
+    assert.equal(await ask('bash', 'c1'), 'allowed-once')
+  } finally {
+    t.cleanup()
+  }
+})
+
+test('0.1.5 shape: unmatched call defers to the terminal answerer', async () => {
+  const t = tempProject({ permissions: { allow: ['Bash(pytest:*)'] } })
+  try {
+    const log = [event('c1', 'bash', { command: 'rm -rf C:/x' })]
+    const { ask } = approvalCtxNewShape(t.dir, newShapeSession(t.dir, log))
+    assert.equal(await ask('bash', 'c1'), 'unavailable')
+  } finally {
+    t.cleanup()
+  }
+})
+
+test('0.1.5 shape: ask rule still defers (human decides)', async () => {
+  const t = tempProject({ permissions: { ask: ['Bash(rm -rf *)'] } })
+  try {
+    const log = [event('c1', 'bash', { command: 'rm -rf C:/x' })]
+    const { ask } = approvalCtxNewShape(t.dir, newShapeSession(t.dir, log))
+    assert.equal(await ask('bash', 'c1'), 'unavailable')
+  } finally {
+    t.cleanup()
+  }
+})
+
+test('0.1.5 shape: the recorded tool/call is found by callId, newest first', async () => {
+  const t = tempProject({ permissions: { allow: ['Bash(pytest:*)'] } })
+  try {
+    const log = [
+      event('c1', 'bash', { command: 'rm -rf C:/x' }),
+      { type: 'tool/result', data: { callId: 'c1' } },
+      event('c1', 'bash', { command: 'pytest -q' }), // same callId retried
+    ]
+    const { ask } = approvalCtxNewShape(t.dir, newShapeSession(t.dir, log))
+    assert.equal(await ask('bash', 'c1'), 'allowed-once', 'newest matching call wins')
+  } finally {
+    t.cleanup()
+  }
+})
+
+test('0.1.5 shape: an unreadable session defers instead of throwing', async () => {
+  const t = tempProject({ permissions: { allow: ['Bash(pytest:*)'] } })
+  try {
+    // No snapshotEvents, no eventAt, no events — `sessionEvents()` is undefined.
+    const { ask } = approvalCtxNewShape(t.dir, { header: { cwd: t.dir } })
+    assert.equal(await ask('bash', 'c1'), 'unavailable')
+  } finally {
+    t.cleanup()
+  }
+})

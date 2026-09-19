@@ -14,7 +14,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { loadClaude, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
+import { loadClaude, parseFrontmatter, expandCcToolToDsh, pluginComponentName, sessionEventAt } from 'dsh-cc-loader'
 
 export const name = 'cc-skills'
 export const inject = ['skills']
@@ -179,7 +179,9 @@ function registerRulesSection(ctx, config, loaderOpts) {
     const alreadyInjected = present(messages)
       || present(decision.messages)
       || agent.session.surface.nodes.some((seq) => {
-        const event = agent.session.events[seq]
+        // `Session.events` was removed in DSH 0.1.2-alpha.4; sessionEventAt
+        // prefers eventAt(seq) and only falls back to the legacy array.
+        const event = sessionEventAt(agent.session, seq)
         return event?.type === 'user/message'
           && event.data?.source?.kind === 'cc-skills'
       })
