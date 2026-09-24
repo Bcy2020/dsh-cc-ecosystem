@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-hooks",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Run unmodified Claude Code hooks in DSH with per-session discovery: project .claude/hooks + global ~/.claude/hooks + plugin dirs. All five handler types execute (command/http/mcp_tool/prompt/agent) through @deepseek-ai/dsh-hook-protocol (11/31 wired events, if-field filtering, official event×type support matrix). Breaks the official bridge's process-level single-config limit.",
   "type": "module",
   "main": "src/index.js",
@@ -27,7 +27,7 @@
   "license": "MIT",
   "dependencies": {
     "@deepseek-ai/dsh-hook-protocol": "^0.1.5-rc.2",
-    "dsh-cc-loader": "^0.2.0"
+    "dsh-cc-loader": "^0.3.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",

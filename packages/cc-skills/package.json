@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-skills",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Load Claude Code .claude/ skills, commands and rules (project + global ~/.claude) into DSH. Fork of dsh-claude-compat (MIT) by biedongbin.",
   "type": "module",
   "main": "src/index.js",
@@ -29,7 +29,7 @@
   "license": "MIT",
   "dependencies": {
     "yaml": "^2.0.0",
-    "dsh-cc-loader": "^0.2.0"
+    "dsh-cc-loader": "^0.3.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
