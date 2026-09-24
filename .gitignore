@@ -6,3 +6,6 @@ dist/
 # internal working docs, never committed
 docs/
 pnpm-workspace.yaml
+
+# workspace state written by dsh-cc-mcp (.dsh/cc-mcp-state.json)
+.dsh/

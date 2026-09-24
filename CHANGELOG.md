@@ -3,10 +3,71 @@
 本仓库遵循 [Conventional Commits](https://www.conventionalcommits.org/);版本号按各包独立递增。
 
 > [!IMPORTANT]
-> **`v0.2.x` 是 DSH 0.1.5 的兼容版本,不是功能版本 —— 只有把 DSH 升级到 `0.1.5-rc.2` 时才需要。**
-> 它绑定 0.1.5 的宿主契约,**在旧版 DSH 上无法工作**。
-> DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.2.x`**,继续使用 `v0.1.x`
+> **`v0.3.x` 绑定 DSH 0.1.5 的宿主契约 —— 只有把 DSH 升级到 `0.1.5-rc.2` 时才需要。**
+> 它在旧版 DSH 上无法工作。
+> DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`)。两代版本号互斥,不存在同时兼容新旧宿主的版本。
+
+## v0.3.0 — dsh-cc-mcp 管理面板(`/mcp`)
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` **0.3.0**,
+`cc-permissions` **0.4.0**(其余 5 包无代码改动,仅随家族升版并同步 `dsh-cc-loader ^0.3.0` 依赖范围)。
+最低 dsh 版本仍为 `0.1.5-rc.2`,宿主契约未变。
+
+- **`/mcp` 面板(Web GUI)**:`dsh-cc-mcp` 现在为每个 MCP 服务器维护一行状态
+  (`ready` / `error` / `disabled` / `skipped` / `checking`)与工具清单。斜杠命令 `/mcp`
+  打开面板:列表页给出服务器 / 类型 / 状态,失败的行有 **Connect** 按钮(点击重连,
+  仍失败则再弹一次自消失提示),已连接的行点 ✓ 可重新自检;点任意一行进入详情页,
+  显示 `Connected · N tools`、配置来源、该服务器的**工具列表**,以及
+  **Disable/Enable** 按钮 —— 禁用后该服务器的工具从模型上下文消失,新会话同样继承;
+  再次点击即可恢复。
+- **宿主 MCP 行纳入面板**:profile 里那些 `@deepseek-ai/dsh-mcp-client` 行(如 github /
+  biorxiv / fetch / chrome-devtools-edge)也会列出,类型为 `host`,状态与工具清单取自
+  宿主当前真实暴露的工具。对它们的操作**按工作区生效、且不改写 profile 配置**:
+  - **Disable** = 用 `tools.restrict({ deny })` 只在**本工作区**的各会话里隐藏该行的
+    `mcp__<server>__*` 工具(宿主行本身不动,其他工作区不受影响),Enable 时调用
+    `restrict` 返回的撤销器恢复;
+  - **Connect** = 该行暴露不出工具时(它自己连接失败/仍在启动),由本插件用**该行自己的
+    配置**连上去,在该会话的 scope 内注册工具把能力补回来(状态标 `adopted`),Disable
+    即撤销这份注册。
+  - 新配置 `manageHostRows`(默认 `true`)可关掉这部分。
+- **状态改为按工作区落盘**:禁用/隐藏决定写在 `<项目根>/.dsh/cc-mcp-state.json`
+  (无项目根时回落到 `$DSH_HOME/cc-mcp-state.json`,也可用 `statePath` 固定路径)。
+  因此「在这个工作区禁用 github」不会影响别的项目;`.mcp.json` 与 Claude Code 设置依旧只读。
+- **会话开始的自检**:进入会话时后台逐个连接各 MCP(与对话并行),失败的服务器以
+  **自动消失的提示框**报出(每个失败只报一次,会话切换/重连不会重复弹)。
+- **传输**:面板走插件自己在宿主 `webServer` 上注册的同源路由 `/cc-mcp/*`(与官方插件市场
+  dshmarket 同一约定):POST 带 `x-cc-mcp` 头、校验 `Origin === Host`、只收 JSON、4 KiB 上限。
+  **不用** `ctx.connection.rpc` —— 实测该服务对 profile 顶层插件不可见
+  (`ctx.inject(['connection'])` 永不触发),那条路根本挂不上路由。
+- **迟到接管(late wiring)**:`agent/created` 只覆盖插件激活后新建的会话,而宿主重启会在
+  用户层插件挂载前恢复上次会话,这类会话改为按需接管:面板/命令用宿主 `ctx.agents`
+  注册表解析活 agent,`/mcp` 命令直接接管调用者;接管时等待首轮自检完成,首次打开面板
+  看到的是已定型的行而不是转圈。
+- **热挂载的两个坑已在代码里规避**(见 `src/index.js` 注释与 DSHCCECO-INSTALL-SKILL.md):
+  - 非 `insert` 的补丁条目里 `name` 只是**断言**,与目标行不同会**整条跳过** —— 挂本地
+    checkout 必须「`- id: <原行>` + `disabled: true`」再 `- insert:` 一个新行;
+  - DSH 热挂载只重新 import **入口 URL**,相对导入的 `manage.js` / `register.js` 会被
+    Node 的 ESM 缓存留住 → 新旧混用。现在相对导入继承入口的 `?v=N`,三个模块永远同批加载。
+- **`/mcp` 宿主命令**:`/mcp <任意参数>` 与 CLI/headless 场景输出文本版状态报告
+  (`/mcp` 裸调用在 GUI 里打开面板);`POST /cc-mcp/diag` 返回路由注册状态、已接管会话
+  与当前可见的 `mcp__*` 工具,用于支持与测试。
+- **新增浏览器半边** `client/index.js`:手写 classic script(懒 CJS 包装,零 `require`、
+  零构建步骤),通过 `package.json` 的 `dsh.client` + `exports["./client"]` 被宿主扫描并
+  按需加载。这是在 DSH 里为**仓库外**插件提供 Web UI 的受支持路径。
+- **新配置**:`enableManager`(默认 `true`,注册 `/mcp` 命令与面板路由)、
+  `manageHostRows`(默认 `true`)、`statePath`(默认空 = 按工作区)。
+- **修复**:`watchProject: false` 时卸载 agent 会在 `detachWatcher` 上抛
+  `Cannot read properties of null`(旧代码只在 `undefined` 上做了保护)。
+- **已知限制**:插件热重载后,上一实例在**会话 scope** 内注册过的工具(例如项目 `.mcp.json`
+  里已连上的服务器)可能残留到该会话被回收为止——面板会把这类行标成 `skipped` 并列出可见
+  工具;宿主重启或开新会话即干净。这也是 `skipped` 的判据(该命名空间已被别的层注册)。
+- **测试**:`packages/cc-mcp/test/mcp-manager.test.mjs`(29 例:投影/持久化/真实 stdio MCP
+  端到端、失败上报、Connect 重试、禁用启用、**宿主行的列出/按工作区隐藏/按需接管**、
+  宿主命令、卸载回收、**迟到接管**、**路由安全边界**)、
+  `packages/cc-mcp/test/client-bundle.test.mjs`(9 例打包与传输契约)、
+  `packages/cc-mcp/test/client-panel.dom.test.mjs`(6 例真实 DOM 面板交互);根 `npm test`
+  已纳入(共 249 例)。
 
 ## v0.2.1 — 版本策略声明(hotfix,无代码改动)
 

@@ -1,19 +1,24 @@
 {
   "name": "dsh-cc-mcp",
-  "version": "0.2.1",
-  "description": "Load Claude Code MCP server configs (.mcp.json / plugin.json inline mcpServers) into DSH as runtime-registered tools: project-root .mcp.json → mcp__<server>__<tool>, plugin MCP → mcp__plugin_<name>_<server>__<tool> (official CC naming). Client bridge on the official @modelcontextprotocol/sdk — no config-row writes, zero-write path preserved.",
+  "version": "0.3.0",
+  "description": "Load Claude Code MCP server configs (.mcp.json / plugin.json inline mcpServers) into DSH as runtime-registered tools: project-root .mcp.json → mcp__<server>__<tool>, plugin MCP → mcp__plugin_<name>_<server>__<tool> (official CC naming). Client bridge on the official @modelcontextprotocol/sdk — no config-row writes, zero-write path preserved. Ships the /mcp management panel (status, reconnect, tool list, persisted enable/disable) as a client half.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./client": "./client/index.js"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "files": [
     "src",
+    "client",
     "README.md",
     "cordis.patch.yml"
   ],
@@ -27,7 +32,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "dsh-cc-loader": "^0.2.0"
+    "dsh-cc-loader": "^0.3.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",

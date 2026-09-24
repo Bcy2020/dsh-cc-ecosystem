@@ -38,6 +38,21 @@ tools** — no config-row writes, no restarts for config changes.
   `dsh-mcp-client` row is skipped by default; `"override": true` in the server
   entry forces the project/plugin connection (agent layer shadows upper
   layers).
+- **Management panel (`/mcp`)**: every server keeps a status row
+  (connected / failed / disabled / provided-by-host) with its tool list. The
+  Web GUI's `/mcp` command opens a panel over those rows: a failed server shows
+  a **Connect** button, a connected one can be re-checked, each row opens a
+  detail view with the server's tools, and **Disable** hides that server from
+  the model until you enable it again. The session's start-up self-check reports
+  failures as auto-dismissing toasts.
+- **Host MCP rows are listed too** (`manageHostRows`, on by default): the
+  profile's own `@deepseek-ai/dsh-mcp-client` instances (github, fetch, …) appear
+  with the tools the host really exposes. Acting on them is **workspace-scoped and
+  never rewrites the profile config**: Disable hides that row's `mcp__<server>__*`
+  tools for this workspace only (via the platform's `tools.restrict({ deny })`,
+  lifted again on Enable), and Connect adopts a row that exposes nothing by
+  connecting with that row's own config and registering its tools inside the
+  session scope.
 
 ## Trust model ⚠️
 
@@ -78,6 +93,61 @@ directory paths inside the config, not module specifiers.
 | `toolCallTimeoutMs` | `60000` | per-call timeout |
 | `watchProject` | `true` | hot-reload the project `.mcp.json` |
 | `projectRootMarkers` | `['.git', '.dsh', '.claude']` | directory names that mark a project root when walking up from the session cwd; the first ancestor containing any marker wins. `.dsh` / `.claude` let projects without a `.git` repo still resolve their root |
+| `enableManager` | `true` | register the `/mcp` command and the panel's `/cc-mcp` route |
+| `manageHostRows` | `true` | list the profile's `@deepseek-ai/dsh-mcp-client` rows in the panel (disabling one only hides its tools in this workspace) |
+| `statePath` | `''` (→ `<projectRoot>/.dsh/cc-mcp-state.json`) | explicit state-file override; empty keeps decisions per workspace (machine-wide file only when the session has no project root) |
+
+## Management panel
+
+`/mcp` (bare) opens the panel in the Web GUI; `/mcp <anything>` prints the text
+report instead, and the same report is what a headless/CLI session gets.
+
+| Status | Meaning | Panel |
+|---|---|---|
+| `ready` | connected and its tools are visible | ✓ — click to re-check |
+| `error` | the connection failed (host rows say whether Connect can adopt it) | `Connect` button, error text in the detail view |
+| `disabled` | disabled in this workspace | `Enable` button |
+| `skipped` | another layer already registers this tool prefix | shown as host-provided, with the visible tools |
+| `checking` | a check/connect is in flight | spinner |
+
+| Scope | Where it comes from | Disable does |
+|---|---|---|
+| `Project` | `<projectRoot>/.mcp.json` | unregister this plugin's tools for that server |
+| `Plugin` | `pluginRoots` (plugin `.mcp.json` / `plugin.json`) | same, under `mcp__plugin_<plugin>_<server>__` |
+| `Host` | the profile's `dsh-mcp-client` rows | hide that row's tools **for this workspace only** (`tools.restrict({ deny })`, lifted on Enable) — the profile config is never rewritten |
+
+`Connect` on a host row that exposes no tools **adopts** it: this plugin connects
+with that row's own config and registers the tools inside the session scope, so a
+row whose own connection failed still gives this workspace working tools.
+
+Decisions are remembered in `<projectRoot>/.dsh/cc-mcp-state.json` (per workspace;
+`$DSH_HOME/cc-mcp-state.json` only for sessions without a project root), which is
+the **only** file this plugin writes — your `.mcp.json`, the profile config and
+Claude Code settings are never touched. Add `.dsh/` to the project's `.gitignore`
+if you do not want to share the choices.
+
+## Try the panel locally
+
+A throwaway project config used to exercise the panel end to end (one server that
+connects, one that fails so `Connect` has something to do):
+
+```json
+{
+  "mcpServers": {
+    "cc-echo": { "command": "node", "args": ["<repo>/packages/cc-mcp/test/mcp-echo-server.mjs"] },
+    "cc-flaky": {
+      "command": "node",
+      "args": [
+        "<repo>/packages/cc-mcp/test/mcp-flaky-server.mjs",
+        "<repo>/.cc-mcp-marker"
+      ]
+    }
+  }
+}
+```
+
+`cc-flaky` refuses to start until `<repo>/.cc-mcp-marker` exists; create it and
+press **Connect** to watch the row flip to connected.
 
 ## Example
 

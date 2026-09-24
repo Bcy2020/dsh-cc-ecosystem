@@ -13,6 +13,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
+// Carry this module's own cache-buster into manage.js, so a DSH hot reload of
+// `…/src/index.js?v=N` never mixes a fresh entry with a stale helper module.
+const { serverKey } = await import(`./manage.js${new URL(import.meta.url).search}`)
+
 export const MAX_PUBLIC_NAME_LENGTH = 64
 const INVALID_NAME_CHARS = /[^A-Za-z0-9_-]/g
 const HASH_LENGTH = 12
@@ -179,8 +183,12 @@ export function createDefinition(state, entry, rawName, publicName, tool) {
     parameters: tool.inputSchema,
     output: createOutput(rawName),
     async execute(args, exec) {
-      const record = state.servers.get(entry.serverName)
+      const record = state.servers.get(serverKey(entry))
       if (record === undefined) throw new Error(`server ${entry.serverName} is no longer configured — reload the project config`)
+      if (record.status !== 'ready') {
+        const detail = typeof record.error === 'string' && record.error !== '' ? `: ${record.error}` : ''
+        throw new Error(`server ${entry.serverName} is not available (${record.status})${detail}`)
+      }
       const conn = await ensureConnected(state, record)
       conn.busy++
       try {
@@ -250,7 +258,7 @@ export async function openConnection(state, record) {
     }
   })
   conn.client = client
-  if (state.disposed || state.servers.get(entry.serverName) !== record) {
+  if (state.disposed || state.servers.get(serverKey(entry)) !== record) {
     try { await client.close() } catch { /* best effort */ }
     throw new Error(`agent disposed or config reloaded during connect`)
   }
