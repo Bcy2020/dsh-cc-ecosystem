@@ -128,8 +128,11 @@ test('integration: PreToolUse denies rm, passes git status; PostToolUse injects 
     const postDecision = await L['tools/post-execute'](gitExec, result, async () => ({ kind: 'accept', content: [{ type: 'text', text: 'ok' }] }))
     assert.equal(postDecision.kind, 'accept')
     assert.ok(Array.isArray(postDecision.additionalContexts))
-    const note = postDecision.additionalContexts.find((m) => m.source?.plugin === 'cc-hooks')
+    const note = postDecision.additionalContexts.find((m) => m.source?.kind === 'cc-hooks')
     assert.ok(note, 'PostToolUse context must be injected with the cc-hooks source')
+    // The host's v4 admission gate refuses the retired V3 wrapper
+    // `{ kind: 'plugin', … }` and fails the WHOLE TURN when it sees one.
+    assert.notEqual(note.source.kind, 'plugin')
     assert.match(note.content.map((b) => b.text).join(''), /\[hook note\]/)
 
     // UserPromptSubmit: demo config has a context-note hook → context appended

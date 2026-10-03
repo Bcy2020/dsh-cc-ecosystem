@@ -375,3 +375,52 @@ test('demo hooks.json: 19 hooks across 11 events — all five handler types pars
   // is skipped with a warning anymore.
   assert.deepEqual(skipped, [])
 })
+
+test('regression: SessionStart hooks still run when the agent has no session yet', async () => {
+  // DSH 0.2.0 announces the agent BEFORE the session is attached, so at the
+  // session-start boundary `agent.session` can still be undefined. The
+  // listener's first line dereferenced it unguarded; the throw was swallowed by
+  // the compat boundary (which must never veto session publication), so the
+  // handler died there and every SessionStart hook silently never ran — no
+  // error, no log line, no hook/invoked record. `runPoint` and `base` were
+  // already total; the listener was the one place that was not.
+  //
+  // Verified against a live profile: before the fix a real session had zero
+  // SessionStart invocations; after it, the hook ran and its injected context
+  // carried the session's real id and workspace cwd.
+  const home = mkdtempSync(join(tmpdir(), 'cc-hooks-nosession-'))
+  const project = makeProject({ SessionStart: [{ hooks: [{ type: 'command', command: 'echo boot' }] }] })
+  const previousCwd = process.cwd()
+  try {
+    const runs = []
+    const ctx = makeCtx()
+    ctx.shell.run = async (req) => {
+      runs.push(req)
+      return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } }
+    }
+    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+
+    // The payload carries no cwd, so discovery falls back to process.cwd();
+    // stand in the project to make that fallback land on real hooks.
+    process.chdir(project)
+
+    // The exact shape that crashed: an agent announced before its session is
+    // attached. This must reach the hooks — `doesNotThrow` alone proves nothing,
+    // because the compat boundary swallows the handler's throw by design.
+    ctx._listeners['agent/created']({ agent: { session: undefined }, source: 'startup' })
+    await sleep(300)
+    assert.ok(runs.some((r) => r.command === 'echo boot'), 'the SessionStart hook must still run')
+
+    // …and no other half-attached shape may take the handler down either.
+    for (const agent of [{ session: {} }, { session: { header: {} } }, {}]) {
+      assert.doesNotThrow(
+        () => ctx._listeners['agent/created']({ agent, source: 'startup' }),
+        `agent ${JSON.stringify(agent)}`,
+      )
+    }
+  } finally {
+    process.chdir(previousCwd)
+    rmSync(home, { recursive: true, force: true })
+    rmSync(project, { recursive: true, force: true })
+  }
+})

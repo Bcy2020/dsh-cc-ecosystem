@@ -23,6 +23,7 @@
 
 import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { parseHookOutput } from '@deepseek-ai/dsh-hook-protocol'
+import { injectedSource } from 'dsh-cc-loader'
 
 /** Official per-type timeout defaults (s): command/http/mcp_tool 600, prompt 30, agent 60. */
 export const HOOK_TYPE_DEFAULT_TIMEOUT_MS = {
@@ -54,8 +55,8 @@ function neutralOutput() {
   return { exitCode: undefined, stderr: '', stdout: '' }
 }
 
-/** The `{kind:'plugin'}` source stamped on messages this plugin builds. */
-const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'cc-hooks' }
+/** The admitted source stamped on messages this plugin builds. */
+const PLUGIN_SOURCE = injectedSource('cc-hooks')
 
 let executorCounter = 0
 function nextId() {

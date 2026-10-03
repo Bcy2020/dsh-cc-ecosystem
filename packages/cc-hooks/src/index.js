@@ -47,7 +47,7 @@ import {
   runMcpToolHook,
   runPromptHook,
 } from './executors.js'
-import { ccBucket, sessionLastEvent } from 'dsh-cc-loader'
+import { ccBucket, injectedSource, onSessionStart, sessionLastEvent } from 'dsh-cc-loader'
 
 export const name = 'cc-hooks'
 // `shell` is required to run hooks; the rest are read opportunistically via
@@ -82,8 +82,8 @@ export const Config = z.object({
  */
 const SUBAGENT_TYPE = 'general-purpose'
 
-/** The `{kind:'plugin'}` source stamped on every context this plugin injects. */
-const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'cc-hooks' }
+/** Source for context this plugin injects — see dsh-cc-loader's message-source.js. */
+const PLUGIN_SOURCE = injectedSource('cc-hooks')
 
 /** A stable per-handler id so an invoked/result pair correlates in the log. */
 let handlerCounter = 0
@@ -110,7 +110,7 @@ export function apply(ctx, config = {}) {
   const projectRootMarkers = config.projectRootMarkers ?? ['.git']
 
   // Per-cwd cache of the merged parsed config, discovered at
-  // agent/session-start (each new session re-reads hooks.json; a new session
+  // session start (each new session re-reads hooks.json; a new session
   // naturally sees config edits) and lazily on first use (a hook can fire
   // before the session-start preload settles). Concurrent discovery for the
   // same cwd is deduped via the in-flight map.
@@ -184,7 +184,9 @@ export function apply(ctx, config = {}) {
    */
   async function runPoint(point, matchQuery, payload, opts) {
     const session = opts.agent?.session ?? opts.session
-    const workdir = session?.header.cwd
+    // Both levels are optional: 0.2.0 can fire an event while the session is
+    // still attaching, so a session without a header is a real shape.
+    const workdir = session?.header?.cwd
     const cwd = workdir ?? process.cwd()
     let entry
     try {
@@ -305,9 +307,16 @@ export function apply(ctx, config = {}) {
 
   // SessionStart preloads the session config and runs SessionStart hooks
   // detached; a slow hook may miss the first request (same caveat as the
-  // official bridge).
-  ctx.on('agent/session-start', ({ agent, source }) => {
-    const cwd = agent.session.header?.cwd
+  // official bridge). `onSessionStart` owns the host move from
+  // `agent/session-start` to `agent/created`, and keeps this listener from
+  // stalling session publication on 0.2.0.
+  onSessionStart(ctx, ({ agent, source }) => {
+    // `agent.session` is NOT guaranteed yet: 0.2.0 announces the agent with
+    // `agent/created` before the session is attached, so an unguarded read
+    // threw here and took the whole handler — and therefore every SessionStart
+    // hook — down with it. `runPoint` and `base` are already total; this line
+    // was the one that ran first.
+    const cwd = agent?.session?.header?.cwd
     if (cwd !== undefined) {
       void configFor(cwd).catch((error) => ctx.logger.warn(`cc-hooks: preload failed for ${cwd}: ${String(error)}`))
     }
@@ -420,7 +429,9 @@ export function apply(ctx, config = {}) {
   // exposes no reason, so the conservative `other` is reported and matched.
   // Subagent disposal is SubagentStop (wired above), not SessionEnd. ---
   ctx.on('agent/disposed', ({ agent }) => {
-    if (agent.session.header.origin === 'subagent') return
+    // The session may already be detached by the time an agent is disposed;
+    // read it the same total way as everywhere else.
+    if (agent?.session?.header?.origin === 'subagent') return
     detached.track(runPoint('SessionEnd', 'other', sessionEndPayload(ctx, agent), { agent, signal: detached.signal }))
   })
 
@@ -519,9 +530,9 @@ function transcriptPath(ctx, session) {
 
 function base(ctx, agent, event) {
   return {
-    session_id: agent?.session.header.id ?? '',
+    session_id: agent?.session?.header?.id ?? '',
     transcript_path: transcriptPath(ctx, agent?.session),
-    cwd: agent?.session.header.cwd ?? process.cwd(),
+    cwd: agent?.session?.header?.cwd ?? process.cwd(),
     hook_event_name: event,
   }
 }

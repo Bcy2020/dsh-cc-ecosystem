@@ -153,58 +153,66 @@ export function apply(ctx, config = {}) {
     }, { prepend: true })
   }
 
-  // ── bare-name deny → hide the tool from the model ─────────────────────────
-  if (config.hideDeniedTools !== false) {
+  // ── agent registration: hide denied tools + apply defaultMode ─────────────
+  // Both concerns are registration-time — they configure the agent's tool
+  // registry and its approval policy before the first prompt — so they share
+  // one `agent/created` listener. DSH 0.2.0 removed `agent/session-start`,
+  // which the defaultMode half used to ride; `agent/created` carries the same
+  // `{ agent }` on both host generations, so neither needs the source-aware
+  // `onSessionStart` boundary.
+  const hideDenied = config.hideDeniedTools !== false
+  const applyDefaultMode = config.enableDefaultMode !== false
+  if (hideDenied || applyDefaultMode) {
     ctx.on('agent/created', ({ agent }) => {
-      const cwd = agent.session?.header?.cwd
+      // `agent` itself must be guarded: 0.2.0 dispatches this event SERIALLY,
+      // so a synchronous throw here vetoes session publication outright.
+      const cwd = agent?.session?.header?.cwd
       if (cwd === undefined) return
-      void (async () => {
-        try {
-          const loaded = await permissionsFor(cwd)
-          const perm = loaded.permissions
-          if (perm === undefined || perm.status !== 'DIRECT') return
-          const { names } = perm.removed
-          if (names.length === 0) return
-          const tools = agent.ctx.tools
-          try {
-            tools.restrict({ deny: names })
-          } catch {
-            // Some names may not be in the registry yet / never registered —
-            // restrict per name so the known ones still hide.
-            for (const name of names) {
-              try { tools.restrict({ deny: [name] }) } catch { /* unknown tool: pre-execute still denies */ }
-            }
-          }
-        } catch (error) {
-          ctx.logger.warn(`cc-permissions: restrict failed: ${String(error)}`)
-        }
-      })()
-    })
-  }
 
-  // ── defaultMode → approval policy / guidance ──────────────────────────────
-  if (config.enableDefaultMode !== false) {
-    ctx.on('agent/session-start', ({ agent }) => {
-      const cwd = agent.session.header?.cwd
-      if (cwd === undefined) return
-      void (async () => {
-        try {
-          const loaded = await permissionsFor(cwd)
-          const mode = loaded.permissions?.defaultMode
-          if (mode === undefined) return
-          const approval = ctx.get('approval')
-          if (mode === 'dontAsk' && approval !== undefined) {
-            approval.setPolicy(agent, 'never')
-            ctx.logger.info(`cc-permissions: defaultMode=dontAsk → approval policy never for session`)
-          } else if (mode === 'bypassPermissions') {
-            ctx.logger.warn(`cc-permissions: defaultMode=bypassPermissions detected — DSH does NOT auto-map this to danger-full-access; enable it explicitly if intended`)
-          } else if (mode !== 'default' && mode !== 'manual') {
-            ctx.logger.info(`cc-permissions: defaultMode=${mode} noted (no direct DSH mapping; sandbox/approval presets govern)`)
+      if (hideDenied) {
+        void (async () => {
+          try {
+            const loaded = await permissionsFor(cwd)
+            const perm = loaded.permissions
+            if (perm === undefined || perm.status !== 'DIRECT') return
+            const { names } = perm.removed
+            if (names.length === 0) return
+            const tools = agent.ctx.tools
+            try {
+              tools.restrict({ deny: names })
+            } catch {
+              // Some names may not be in the registry yet / never registered —
+              // restrict per name so the known ones still hide.
+              for (const name of names) {
+                try { tools.restrict({ deny: [name] }) } catch { /* unknown tool: pre-execute still denies */ }
+              }
+            }
+          } catch (error) {
+            ctx.logger.warn(`cc-permissions: restrict failed: ${String(error)}`)
           }
-        } catch (error) {
-          ctx.logger.warn(`cc-permissions: defaultMode handling failed: ${String(error)}`)
-        }
-      })()
+        })()
+      }
+
+      if (applyDefaultMode) {
+        void (async () => {
+          try {
+            const loaded = await permissionsFor(cwd)
+            const mode = loaded.permissions?.defaultMode
+            if (mode === undefined) return
+            const approval = ctx.get('approval')
+            if (mode === 'dontAsk' && approval !== undefined) {
+              approval.setPolicy(agent, 'never')
+              ctx.logger.info(`cc-permissions: defaultMode=dontAsk → approval policy never for session`)
+            } else if (mode === 'bypassPermissions') {
+              ctx.logger.warn(`cc-permissions: defaultMode=bypassPermissions detected — DSH does NOT auto-map this to danger-full-access; enable it explicitly if intended`)
+            } else if (mode !== 'default' && mode !== 'manual') {
+              ctx.logger.info(`cc-permissions: defaultMode=${mode} noted (no direct DSH mapping; sandbox/approval presets govern)`)
+            }
+          } catch (error) {
+            ctx.logger.warn(`cc-permissions: defaultMode handling failed: ${String(error)}`)
+          }
+        })()
+      }
     })
   }
 
