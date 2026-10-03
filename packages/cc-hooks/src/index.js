@@ -184,7 +184,9 @@ export function apply(ctx, config = {}) {
    */
   async function runPoint(point, matchQuery, payload, opts) {
     const session = opts.agent?.session ?? opts.session
-    const workdir = session?.header.cwd
+    // Both levels are optional: 0.2.0 can fire an event while the session is
+    // still attaching, so a session without a header is a real shape.
+    const workdir = session?.header?.cwd
     const cwd = workdir ?? process.cwd()
     let entry
     try {
@@ -309,7 +311,12 @@ export function apply(ctx, config = {}) {
   // `agent/session-start` to `agent/created`, and keeps this listener from
   // stalling session publication on 0.2.0.
   onSessionStart(ctx, ({ agent, source }) => {
-    const cwd = agent.session.header?.cwd
+    // `agent.session` is NOT guaranteed yet: 0.2.0 announces the agent with
+    // `agent/created` before the session is attached, so an unguarded read
+    // threw here and took the whole handler — and therefore every SessionStart
+    // hook — down with it. `runPoint` and `base` are already total; this line
+    // was the one that ran first.
+    const cwd = agent?.session?.header?.cwd
     if (cwd !== undefined) {
       void configFor(cwd).catch((error) => ctx.logger.warn(`cc-hooks: preload failed for ${cwd}: ${String(error)}`))
     }
@@ -422,7 +429,9 @@ export function apply(ctx, config = {}) {
   // exposes no reason, so the conservative `other` is reported and matched.
   // Subagent disposal is SubagentStop (wired above), not SessionEnd. ---
   ctx.on('agent/disposed', ({ agent }) => {
-    if (agent.session.header.origin === 'subagent') return
+    // The session may already be detached by the time an agent is disposed;
+    // read it the same total way as everywhere else.
+    if (agent?.session?.header?.origin === 'subagent') return
     detached.track(runPoint('SessionEnd', 'other', sessionEndPayload(ctx, agent), { agent, signal: detached.signal }))
   })
 
@@ -521,9 +530,9 @@ function transcriptPath(ctx, session) {
 
 function base(ctx, agent, event) {
   return {
-    session_id: agent?.session.header.id ?? '',
+    session_id: agent?.session?.header?.id ?? '',
     transcript_path: transcriptPath(ctx, agent?.session),
-    cwd: agent?.session.header.cwd ?? process.cwd(),
+    cwd: agent?.session?.header?.cwd ?? process.cwd(),
     hook_event_name: event,
   }
 }
