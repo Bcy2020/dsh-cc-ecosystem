@@ -132,6 +132,69 @@ test('winPathToPosix', () => {
   assert.equal(winPathToPosix('C:/Users/alice'), '/c/Users/alice')
 })
 
+// ─── bracket literals (issue #8) ─────────────────────────────────────────────
+// `[...]` character classes are a PATH-dialect feature only: CC has no class
+// syntax in command or domain patterns. Compiling `Bash(echo [11-04-54])` as a
+// class threw "Range out of order in character class", and since the rules are
+// compiled on every tool call, that one rule took the whole permission gate
+// down instead of just itself.
+
+test('command pattern: [ ] is a literal, not a character class', () => {
+  const re = compileCommandPattern('echo [11-04-54]')
+  assert.match('echo [11-04-54]', re)
+  assert.doesNotMatch('echo 1', re)
+})
+
+test('command pattern: a regex-VALID class is still a literal', () => {
+  // Pins the dialect split independently of the malformed-class fallback: this
+  // class compiles fine as a regex, so only the command-dialect rule keeps it
+  // literal. `echo [ab]` must not become "echo followed by a or b".
+  const re = compileCommandPattern('echo [ab]')
+  assert.match('echo [ab]', re)
+  assert.doesNotMatch('echo a', re)
+})
+
+test('command pattern: a regex-invalid class never throws', () => {
+  for (const spec of ['echo [11-04-54]', 'ls [z-a]', 'grep []]', 'sed [a-', 'echo [[]']) {
+    assert.doesNotThrow(() => compileCommandPattern(spec), spec)
+  }
+})
+
+test('domain pattern: [ ] is a literal', () => {
+  const re = compileDomainPattern('[ab].example.com')
+  assert.match('[ab].example.com', re)
+  assert.doesNotMatch('a.example.com', re)
+})
+
+test('path pattern: [ ] is still a character class', () => {
+  const { re } = compilePathPattern('src/[a-z]*.js')
+  assert.match('src/foo.js', re)
+  assert.doesNotMatch('src/1.js', re)
+})
+
+test('path pattern: an unusable class degrades to a literal, never throws', () => {
+  let re
+  assert.doesNotThrow(() => { re = compilePathPattern('src/[11-04].js').re })
+  assert.match('src/[11-04].js', re)
+  assert.doesNotMatch('src/1.js', re)
+})
+
+test('one bad rule no longer takes the whole permission gate down', () => {
+  const env = { cwd: 'C:/ws', homeDir: 'C:/Users/u', projectRoot: 'C:/ws' }
+  const parsed = parseRulesFor({
+    deny: [
+      { raw: 'Bash(echo [11-04-54])', scope: 'project', path: 'p' },
+      { raw: 'Bash(npm publish)', scope: 'project', path: 'p' },
+    ],
+    ask: [],
+    allow: [],
+  })
+  const decide = (command) => evaluateCall(parsed, { tool: 'bash', args: { command } }, env).decision
+  assert.equal(decide('echo [11-04-54]'), 'deny')
+  assert.equal(decide('npm publish'), 'deny', 'the sibling rule is still enforced')
+  assert.equal(decide('npm test'), 'none')
+})
+
 // ─── splitSubcommands ────────────────────────────────────────────────────────
 
 test('splitSubcommands: operators and quotes', () => {

@@ -10,6 +10,9 @@
 //   `./` or bare = relative to cwd.
 // - Domain (WebFetch): `*` matches text between dots (a leading `*.` spans
 //   any subdomain depth; a bare `*` matches everything).
+//
+// `[...]` character classes belong to the PATH dialect alone: CC's command and
+// domain patterns have no class syntax, so `[` is a literal character there.
 
 /** Escape a literal string for use inside a RegExp. */
 export function escapeRegExp(s) {
@@ -35,9 +38,10 @@ export function globToRegexBody(pattern, { segment = '/' } = {}) {
     } else if (ch === '?') {
       out += seg === null ? '.' : `[^${seg}]`
       i++
-    } else if (ch === '[') {
+    } else if (ch === '[' && seg === '/') {
       const close = pattern.indexOf(']', i + 1)
-      if (close > 0) { out += pattern.slice(i, close + 1); i = close + 1 }
+      const cls = close > 0 ? pattern.slice(i, close + 1) : ''
+      if (cls !== '' && isUsableCharClass(cls)) { out += cls; i = close + 1 }
       else { out += '\\['; i++ }
     } else {
       out += escapeRegExp(ch)
@@ -45,6 +49,20 @@ export function globToRegexBody(pattern, { segment = '/' } = {}) {
     }
   }
   return out
+}
+
+/**
+ * Whether a glob `[...]` slice is simultaneously a VALID regex character class.
+ *
+ * Gitignore classes and JS regex classes mostly agree, but a reversed range
+ * such as `[11-04-54]` (read as `1-0`) is tolerated by gitignore and rejected
+ * by `new RegExp`. Class compilation happens on every tool call, so letting one
+ * such class throw would take down the whole permission gate; an unusable class
+ * degrades to a literal `[` instead.
+ * @param {string} cls - the slice from `[` through `]` inclusive.
+ */
+function isUsableCharClass(cls) {
+  try { new RegExp(cls); return true } catch { return false }
 }
 
 /**
