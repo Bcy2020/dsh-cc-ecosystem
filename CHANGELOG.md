@@ -3,10 +3,46 @@
 本仓库遵循 [Conventional Commits](https://www.conventionalcommits.org/);版本号按各包独立递增。
 
 > [!IMPORTANT]
-> **`v0.3.x` 绑定 DSH 0.1.5 的宿主契约 —— 只有把 DSH 升级到 `0.1.5-rc.2` 时才需要。**
-> 它在旧版 DSH 上无法工作。
+> **`v0.3.1` 起同时兼容 DSH `0.1.5-rc.2` 与 `0.2.0-rc.2` —— 双宿主,一条版本线。**
+> `v0.3.0` 只绑定 0.1.5 的宿主契约,在 0.2.0 上会被安装闸直接拒绝
+> (`Plugin … is incompatible with dsh 0.2.0-rc.2`)。
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
-> (cc-permissions `v0.2.x`)。两代版本号互斥,不存在同时兼容新旧宿主的版本。
+> (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
+
+## v0.3.1 — 双宿主支持 + 全家桶 meta 包
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` **0.3.1**,
+`cc-permissions` **0.4.1**,新增 `dsh-cc-ecosystem` **0.3.1**。DSH 0.2.0 换掉了插件安装路径
+并新增一道兼容闸,本次让全部 7 个包同时通过新旧两代宿主。
+
+- **新增 `dsh-cc-ecosystem`(全家桶)**:一条命令装齐 loader + 五个适配器 ——
+  `dsh plugin --profile <name> add dsh-cc-ecosystem`(Web GUI 粘贴包名同理)。
+  为什么必须单独一个包:DSH 把 `dsh.profile.bundles` 与 **profile 的直接依赖**对账,
+  传递依赖不进 `bundles`、其 patch 永不加载 —— 装全家桶时五个适配器都是它的传递依赖,
+  所以只有它自己的 patch 能挂载它们。因此它的 `cordis.patch.yml` 是五个适配器各自 patch 的
+  **副本**;新增 `test/umbrella.test.mjs`(5)逐行比对两份配置,任何 config 漂移即失败
+  (已做变异验证:改动一个值即可让该断言失败)。本包不声明 `dsh-*` peer —— 适配器的兼容性
+  由宿主顺着 patch 里插入的行逐个读出并校验,再加一道闸只会产生第二份可能互相打架的判定。
+- **通过 0.2.0 的兼容闸**:0.2.0 的安装路径新增 `evaluatePluginCompatibility` —— 对每个
+  `@deepseek-ai/dsh` / `dsh-*` 开头的 peer,用 `semver.satisfies(runtime, range,
+  { includePrerelease: true })` 对照**运行时版本**,不满足即在安装前拒绝。`dsh-llm` 与
+  `dsh-subprocess` 的 peer 范围由 `^0.1.5-rc.2` 放宽为 `^0.1.5-rc.2 || ^0.2.0-rc.2`
+  (cc-skills / cc-agents / cc-hooks / cc-mcp)。这四个包此前在 0.2.0 上会报
+  `Plugin … is incompatible with dsh 0.2.0-rc.2: peerDependencies {…}`。
+  cc-permissions 与 cc-loader 不含 `dsh-*` peer,不受这道闸影响。
+- **`dsh-cc-loader` 现在可作插件安装**:0.2.0 的插件管理器拒绝任何未声明 `dsh.bundle` 的包
+  (`… declares no dsh.bundle`)。loader 是纯库、不贡献任何插件行,因此声明一个内容为 `[]`
+  的空 patch:它通过宿主的每一道校验(`dsh.bundle` 须是对象、`patch` 须是非空字符串、解析后
+  的文件须在包目录内且存在、顶层须是 YAML 数组),并激活一个不插入任何行的空层。
+  `dsh.bundle.patch` 允许是字符串或字符串数组,空数组合法。
+- **修复 cc-hooks 在 0.2.0 上 command hook 崩溃**:宿主 shell 执行器接口由 `run(spec)`
+  变为 `(await execute(spec)).result()`。两版 `dsh-hook-protocol` 的 `runHook` 除这一行外
+  **逐字节相同**,所以任何依赖版本范围都只能满足其中一代(钉 0.2.x 坏 0.1.x,钉 0.1.x 坏
+  0.2.x)。cc-hooks 改为自己持有这次调用,按 `execute` / `run` 特性探测
+  (`src/shell-compat.js`,与 loader 的 `session-compat.js` 同一模式);请求形状、超时、
+  stdin 封装与错误语义与原实现逐字保持一致,两代宿主行为相同。新增
+  `test/hooks-shell-compat.test.mjs`(8 用例)分别覆盖两代形状、`execute` 直接返回结果、
+  两者皆缺与执行器抛错时的降级。
 
 ## v0.3.0 — dsh-cc-mcp 管理面板(`/mcp`)
 

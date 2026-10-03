@@ -1,0 +1,5 @@
+# dsh-cc-loader is a library, not a plugin: it contributes no row, only the
+# shared parse layer the other dsh-cc packages import. This empty patch exists
+# so the package stays installable through `dsh plugin` / the plugin manager,
+# which refuse any package that declares no `dsh.bundle`.
+[]

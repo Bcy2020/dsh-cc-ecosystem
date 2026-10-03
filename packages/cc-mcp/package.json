@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Load Claude Code MCP server configs (.mcp.json / plugin.json inline mcpServers) into DSH as runtime-registered tools: project-root .mcp.json → mcp__<server>__<tool>, plugin MCP → mcp__plugin_<name>_<server>__<tool> (official CC naming). Client bridge on the official @modelcontextprotocol/sdk — no config-row writes, zero-write path preserved. Ships the /mcp management panel (status, reconnect, tool list, persisted enable/disable) as a client half.",
   "type": "module",
   "main": "src/index.js",
@@ -32,7 +32,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "dsh-cc-loader": "^0.3.0"
+    "dsh-cc-loader": "^0.3.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
@@ -41,7 +41,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-subprocess": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-subprocess": "^0.1.5-rc.2 || ^0.2.0-rc.2",
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependenciesMeta": {

@@ -33,7 +33,13 @@ jobs:
           for d in cc-skills cc-permissions cc-agents cc-hooks cc-mcp; do
             (cd "packages/$d" && npm pkg set 'dependencies.dsh-cc-loader=file:../cc-loader')
           done
-          for d in cc-loader cc-skills cc-permissions cc-agents cc-hooks cc-mcp; do
+          # The umbrella depends on all five adapters AND the loader. On a
+          # release commit not one of those ranges is on the registry yet, so
+          # the same rewrite applies to every dsh-cc-* dependency it declares.
+          for d in loader skills permissions agents hooks mcp; do
+            (cd packages/cc-ecosystem && npm pkg set "dependencies.dsh-cc-$d=file:../cc-$d")
+          done
+          for d in cc-loader cc-skills cc-permissions cc-agents cc-hooks cc-mcp cc-ecosystem; do
             echo "==> packages/$d"
             (cd "packages/$d" && npm install --no-audit --no-fund)
           done
@@ -56,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          for d in cc-loader cc-skills cc-permissions cc-agents cc-hooks cc-mcp; do
+          for d in cc-loader cc-skills cc-permissions cc-agents cc-hooks cc-mcp cc-ecosystem; do
             echo "==> pack $d"
             (cd "packages/$d" && npm pack --dry-run >/dev/null)
           done

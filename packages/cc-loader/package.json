@@ -1,14 +1,20 @@
 {
   "name": "dsh-cc-loader",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Shared parse layer for the dsh-cc ecosystem: parses Claude Code .claude/ (project + global) into a standalone .dsh intermediate representation (IR), classifying every component DIRECT/ADAPTED/UNSUPPORTED/BLOCKED and filtering unsupported ones out.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js"
   },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "files": [
     "src",
+    "cordis.patch.yml",
     "README.md"
   ],
   "keywords": [

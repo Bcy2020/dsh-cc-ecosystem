@@ -3,16 +3,16 @@
 [![Listed in dsh-market (via awesome-dsh-plugin)](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/dsh-market/dsh-market)
 
 > [!IMPORTANT]
-> ### `v0.3.x` / cc-permissions `v0.4.x` —— 仅在把 DSH 升级到 `0.1.5-rc.2` 时才需要
+> ### `v0.3.1` 起同时兼容 DSH `0.1.5-rc.2` 与 `0.2.0-rc.2`
 >
-> **这一代版本绑定 DSH 0.1.5 的宿主契约,不是旧宿主的兼容版本。**
-> (`snapshotEvents()` / `eventAt()`、`ToolCallId`、`^0.1.5-rc.2` 的 peer 范围),
-> **在旧版 DSH 上无法工作**。
+> **一条版本线覆盖两代宿主,不再需要二选一。**
+> (`snapshotEvents()` / `eventAt()` 兼容层、`ToolCallId`、`dsh.bundle` 声明、
+> `^0.1.5-rc.2 || ^0.2.0-rc.2` 的 peer 范围)。
 >
-> - ✅ **正在把 DSH 升级到 `0.1.5-rc.2` 及以上** → 必须升级到这一代(否则插件启动失败或运行时报错)
-> - ⛔ **DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2`** → **请勿升级到这一代**,继续使用 `v0.1.x`(cc-permissions `v0.2.x`)
+> - ✅ **DSH `0.1.5-rc.2` 或 `0.2.0-rc.2`** → 用 `v0.3.1`
+> - ⛔ **DSH `0.1.0-rc.7` ~ `0.1.1-rc.2`** → 请勿升级到 `v0.3.x`,继续使用 `v0.1.x`(cc-permissions `v0.2.x`)
 >
-> 两代版本号是**互斥**的,不存在同时兼容新旧宿主的版本。旧宿主不满足 peer 范围,包管理器会报 unmet peer dependency。
+> 注意:`v0.3.0` 只绑定 0.1.5 的宿主契约,在 0.2.0 上会被安装闸拒绝 —— 用 0.2.0 就必须上 `v0.3.1`。
 
 | 包 | 月下载 (npm `latest`) | 版本 |
 |---|---|---|
@@ -22,6 +22,7 @@
 | [dsh-cc-agents](https://www.npmjs.com/package/dsh-cc-agents) | ![](https://img.shields.io/npm/dm/dsh-cc-agents?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-agents?style=flat) |
 | [dsh-cc-hooks](https://www.npmjs.com/package/dsh-cc-hooks) | ![](https://img.shields.io/npm/dm/dsh-cc-hooks?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-hooks?style=flat) |
 | [dsh-cc-mcp](https://www.npmjs.com/package/dsh-cc-mcp) | ![](https://img.shields.io/npm/dm/dsh-cc-mcp?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-mcp?style=flat) |
+| [dsh-cc-ecosystem](https://www.npmjs.com/package/dsh-cc-ecosystem) | ![](https://img.shields.io/npm/dm/dsh-cc-ecosystem?style=flat) | ![](https://img.shields.io/npm/v/dsh-cc-ecosystem?style=flat) |
 
 Load Claude Code `.claude/` assets (skills, commands, rules, permissions, agents, hooks) into DeepSeek Harness as a DSH plugin ecosystem.
 
@@ -39,16 +40,18 @@ Load Claude Code `.claude/` assets (skills, commands, rules, permissions, agents
 | [dsh-cc-agents](packages/cc-agents) | 适配器:`.claude/agents`(身份锚定子代理)→ 会话启动注入 agent 目录(CC @-mention 语义)+ `cc_agent` 派发工具(persona = 正文,`tools`/`disallowedTools` → toolFilter,`skills` 预载,`model` 经 `modelAliases` 映射);插件 agent 合并(plugin-<name>-<agent> 命名空间, M4c) | ✅ M2 / M4c |
 | [dsh-cc-hooks](packages/cc-hooks) | 适配器:发现项目/全局/插件 `hooks.json` → 合并 → 经 `dsh-hook-protocol`(官方库)按 CC 语义运行(7 事件,command 型),per-session 发现突破官方桥进程级限制 | ✅ M2 |
 | [dsh-cc-mcp](packages/cc-mcp) | 适配器:发现 CC MCP 配置(项目根 `.mcp.json` + 插件 `.mcp.json`/plugin.json 内联 `mcpServers`)→ 经官方 `@modelcontextprotocol/sdk` 运行时注册为 DSH 工具(项目级 `mcp__<server>__<tool>`,插件级 `mcp__plugin_<name>_<server>__<tool>` CC 官方命名);env 值运行时展开不落盘;lazy 连接 + idle 回收 + `.mcp.json` 热重载;**`/mcp` 管理面板**(状态列表 / Connect 重连 / 工具列表 / Disable-Enable 持久化 / 会话自检 toast,浏览器半边走 Connection RPC) | ✅ M3 / 面板 |
+| [dsh-cc-ecosystem](packages/cc-ecosystem) | **全家桶 meta 包**:一条命令装齐 loader + 五个适配器,并由**一个** profile 层挂载全部五行(是各适配器自身 patch 的副本 —— 传递依赖不会进 `dsh.profile.bundles`,所以只有本包的 patch 能挂载它们;两份配置的一致性有逐行测试盯着,已做变异验证) | ✅ |
 
-M4(plugin.json / marketplace / plugin 命名空间 / enableAllProjectMcpServers)已完成;`dsh-cc-mcp` 的 **`/mcp` 管理面板**是本次 **v0.3.0** 的功能主体:Web GUI 内列出项目/插件 MCP **以及宿主 `dsh-mcp-client` 行**,给出状态、工具列表、Connect 重连、按工作区禁用启用(状态写在 `<项目根>/.dsh/cc-mcp-state.json`)、会话自检提示;宿主行由面板列出并可禁用(仅对本工作区隐藏工具)/按需接管(Connect 用该行自己的配置连上去,把工具在该会话内补回来),**不改写 profile 配置**。**6 包已发布 npm**(dsh-cc-loader / dsh-cc-skills / dsh-cc-agents / dsh-cc-hooks / dsh-cc-mcp @ **v0.3.0**,dsh-cc-permissions @ **v0.4.0**),`npm i dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents dsh-cc-hooks dsh-cc-mcp`;规划中:M5 `dsh-cc-misc` + `dsh-cc` 全家桶 meta 包;LSP 桥接(mcpls)研究完成,实现待生态需求确认后启动。
+M4(plugin.json / marketplace / plugin 命名空间 / enableAllProjectMcpServers)已完成;`dsh-cc-mcp` 的 **`/mcp` 管理面板**是 **v0.3.0** 的功能主体:Web GUI 内列出项目/插件 MCP **以及宿主 `dsh-mcp-client` 行**,给出状态、工具列表、Connect 重连、按工作区禁用启用(状态写在 `<项目根>/.dsh/cc-mcp-state.json`)、会话自检提示;宿主行由面板列出并可禁用(仅对本工作区隐藏工具)/按需接管(Connect 用该行自己的配置连上去,把工具在该会话内补回来),**不改写 profile 配置**。**7 包已发布 npm**(dsh-cc-loader / dsh-cc-skills / dsh-cc-agents / dsh-cc-hooks / dsh-cc-mcp @ **v0.3.1**,dsh-cc-permissions @ **v0.4.1**,dsh-cc-ecosystem @ **v0.3.1**)。**装全家桶只需一个包**:`dsh plugin --profile <name> add dsh-cc-ecosystem`(Web GUI 粘贴包名同理);也可逐个装 `npm i dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents dsh-cc-hooks dsh-cc-mcp`。规划中:M5 `dsh-cc-misc`;LSP 桥接(mcpls)研究完成,实现待生态需求确认后启动。
 
 ## DSH 兼容性
 
-> **最低要求:DSH `0.1.5-rc.2`**(下列破坏性变更使其无法在更早宿主上运行)。
+> **最低要求:DSH `0.1.5-rc.2`;`v0.3.1` 起额外支持 `0.2.0-rc.2`。**(下列破坏性变更使其无法在更早宿主上运行)。
 
-| 本仓库版本 | 最低 dsh 版本 | 说明 |
+| 本仓库版本 | 支持的 dsh 版本 | 说明 |
 |---|---|---|
-| `v0.3.x`(cc-permissions `v0.4.x`) | **0.1.5-rc.2** | 功能版本:`dsh-cc-mcp` 的 `/mcp` 管理面板(含宿主 MCP 行、按工作区禁用、按需接管);依赖范围升至 `dsh-cc-loader ^0.3.0` |
+| `v0.3.1`(cc-permissions `v0.4.1`) | **0.1.5-rc.2** 与 **0.2.0-rc.2** | 双宿主:放宽 `dsh-llm` / `dsh-subprocess` 的 peer 以通过 0.2.0 的兼容闸;`dsh-cc-loader` 补上 `dsh.bundle` 空 patch 使其可安装;cc-hooks 自持 shell 调用以适配 0.2.0 的执行器接口 |
+| `v0.3.0`(cc-permissions `v0.4.x`) | **0.1.5-rc.2** | 功能版本:`dsh-cc-mcp` 的 `/mcp` 管理面板(含宿主 MCP 行、按工作区禁用、按需接管);依赖范围升至 `dsh-cc-loader ^0.3.0`。**在 0.2.0 上会被安装闸拒绝** |
 | `v0.2.x`(cc-permissions `v0.3.x`) | **0.1.5-rc.2** | 修复 `Session.events` 移除与 `CallId` 改名;插件依赖改用 peerDependencies |
 | `v0.1.x`(cc-permissions `v0.2.x`) | 0.1.0-rc.7 | 仅适用于 0.1.2-alpha.4 之前的宿主,**已不再支持** |
 
@@ -79,7 +82,7 @@ DSH 是 developer preview,每个版本都可能破坏兼容。本次升级(0.1.1
 ## 实装与发布
 
 - **[安装技能(另一台电脑实装经验总结)](DSHCCECO-INSTALL-SKILL.md)**:完整的热挂载步骤 —— junction hub 依赖解析、`cordis.patch.yml` `file:///` 挂载(含 `?v=N` 热更新)、宿主 Loader 树验证(`pluginInventory/list`)、逐插件行为验证、M4 插件目录(`pluginRoots`)配置。
-- **npm 发布**:`v0.3.0` 为 6 包协同版本 —— `dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` **v0.3.0** + `cc-permissions` **v0.4.0**(见 [CHANGELOG.md](CHANGELOG.md));发布由 `.github/workflows/release.yml` 在推 `v*` tag 时按依赖顺序执行(`dsh-cc-loader` **必须先发**,其余包以 `^0.3.0` 依赖它),依赖仓库 Secret `NPM_TOKEN`;本机 npm 源为镜像时手动发布需 `--registry=https://registry.npmjs.org`,开 2FA 的账号需 granular token + 2FA bypass。
+- **npm 发布**:`v0.3.1` 为 7 包协同版本 —— `dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` **v0.3.1** + `cc-permissions` **v0.4.1** + `cc-ecosystem` **v0.3.1**(见 [CHANGELOG.md](CHANGELOG.md));发布由 `.github/workflows/release.yml` 在推 `v*` tag 时按依赖顺序执行(`dsh-cc-loader` **必须先发**,其余包以 `^0.3.1` 依赖它,`dsh-cc-ecosystem` **必须最后发**因为它依赖前六个),依赖仓库 Secret `NPM_TOKEN`(granular token 需覆盖**全部 7 个包**,新增包不在旧 token 的包列表里);本机 npm 源为镜像时手动发布需 `--registry=https://registry.npmjs.org`,开 2FA 的账号需 granular token + 2FA bypass。发布后需同步各包 `package-lock.json`(见 CI 说明:发布前 `^0.3.1` 在 registry 上不存在,直接 `npm install` 会 ETARGET)。
 
 ## 支持的 CC 权限语义(与 Claude Code 一致)
 
@@ -101,9 +104,16 @@ DSH 是 developer preview,每个版本都可能破坏兼容。本次升级(0.1.1
 > **推荐**:新机器按 [DSHCCECO-INSTALL-SKILL.md](DSHCCECO-INSTALL-SKILL.md) 的 junction hub + `cordis.patch.yml` 热挂载(已在另一台电脑实装验证)。
 
 ```sh
-# 先装共享库,再装插件
+# 全家桶:一个包装齐(推荐)
+dsh plugin --profile <name> add dsh-cc-ecosystem
+
+# 或逐个装(先装共享库,再装插件)
 dsh plugin --profile <name> add dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents dsh-cc-hooks dsh-cc-mcp
 ```
+
+> 两种装法效果相同。区别只在 `dsh.profile.bundles` 里多了/少了一个层:全家桶由**自己的**一个
+> patch 挂载五行,逐个装则由每个适配器各自的 patch 挂载自己那一行。不能只装全家桶之外的某几个
+> 适配器再指望它们是「顺便」被挂上的 —— 传递依赖从不进 `bundles`。
 
 本地 patch 挂载(Web profile 热更新)见各包 README;Windows 绝对路径必须 `file:///` 前缀。
 
@@ -113,7 +123,7 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-skills dsh-cc-permissions d
 
 ## 验证
 
-- 单元测试:`npm test` — 共 **249 用例全绿**(含 loader、agents、hooks、mcp、permissions、plugin、LSP,以及 session 形状回归:<br>`packages/cc-loader/test/session-compat.test.mjs`(17)、`packages/cc-skills/test/rules-dedup.test.mjs`(5)、`test/hooks-session-shape.test.mjs`(5)、`test/hooks-transcript-path.test.mjs`(7))
+- 单元测试:`npm test` — 共 **262 用例全绿**(含 loader、agents、hooks、mcp、permissions、plugin、umbrella、LSP,以及 session 形状回归:<br>`packages/cc-loader/test/session-compat.test.mjs`(17)、`packages/cc-skills/test/rules-dedup.test.mjs`(5)、`test/hooks-shell-compat.test.mjs`(8)、`test/umbrella.test.mjs`(5)、`test/hooks-session-shape.test.mjs`(5)、`test/hooks-transcript-path.test.mjs`(7))
 - **`/mcp` 面板验证**:`packages/cc-mcp/test/mcp-manager.test.mjs`(24)以**真实 stdio MCP 服务器**跑通宿主半边(状态行、工具注册、失败只报一次、Connect 真重试、禁用/启用跨会话持久化、`/mcp` 文本报告、卸载回收、宿主重启后对既有会话的**按需接管**、面板路由的**安全边界**);`packages/cc-mcp/test/client-bundle.test.mjs`(9)锁定浏览器半边的打包与传输契约(扫描器前置条件、单语句 classic script、零 `require`、同源 POST 与信封降级);`packages/cc-mcp/test/client-panel.dom.test.mjs`(6)**在真实 DOM(jsdom)里**验证面板:列表 → Connect → 详情工具列表 → Disable/Enable → Esc 关闭 → 自检 toast 自动消失。jsdom 不是本仓库依赖,该套件默认跳过,`JSDOM_PATH=<jsdom 路径> npm test` 可运行
 - **两种 Session 形状**均有回归覆盖:0.1.5 形状(`snapshotEvents()` / `eventAt()` / `seq`,**无** `events` 属性)与旧形状(`events` 数组)。回归测试经过**变异验证**:把兼容层退回"只读 `session.events`"后,全部 5 个 0.1.5 形状用例失败、而旧形状用例仍通过
 - **依赖解析实测**:在干净 profile 安装本版本后,`@deepseek-ai/dsh-llm` 与 `@deepseek-ai/schemastery` 解析到**宿主**的 0.1.5-rc.2 副本(profile 内不再有第二份 SDK),`@deepseek-ai/dsh-hook-protocol` 为自带的 0.1.5-rc.2 副本

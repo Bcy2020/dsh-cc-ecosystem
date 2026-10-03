@@ -1,0 +1,43 @@
+# The umbrella layer: one install mounts every dsh-cc adapter.
+#
+# The row configs below are COPIES of each adapter's own `cordis.patch.yml`.
+# They have to be copied rather than referenced, because installing the umbrella
+# alone never activates the siblings' own patches: `dsh plugin` reconciles
+# `dsh.profile.bundles` against the PROFILE's direct dependencies, and the five
+# adapters are transitive dependencies of this package, not direct ones. So the
+# umbrella's patch is the only thing that mounts them.
+#
+# `test/umbrella.test.mjs` asserts these rows stay identical to the adapters'
+# own patches, so a config default changed in one place cannot silently drift
+# from the other.
+- insert:
+    - id: cc-skills
+      name: 'dsh-cc-skills'
+      config:
+        enableSkills: true
+        enableRules: true
+        enableGlobal: true
+    - id: cc-permissions
+      name: 'dsh-cc-permissions'
+      config:
+        enabled: true
+        hideDeniedTools: true
+    - id: cc-agents
+      name: 'dsh-cc-agents'
+      config:
+        provider: spawn
+        toolName: cc_agent
+        injectCatalog: true
+    - id: cc-hooks
+      name: 'dsh-cc-hooks'
+      config:
+        enabled: true
+        enableGlobal: true
+    - id: cc-mcp
+      name: 'dsh-cc-mcp'
+      config:
+        enableProject: true
+        pluginRoots: []
+        idleTimeoutMs: 300000
+        toolCallTimeoutMs: 60000
+        watchProject: true

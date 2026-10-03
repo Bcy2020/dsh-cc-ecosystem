@@ -34,8 +34,8 @@ import {
   DEFAULT_STDERR_SUMMARY_MAX_CHARS,
   matchesMatcher,
   mergeHookOutputs,
-  runHook,
 } from '@deepseek-ai/dsh-hook-protocol'
+import { runShellHook } from './shell-compat.js'
 import { parseHooksConfig, substituteCommand } from './parse.js'
 import { discoverHookFiles } from './discover.js'
 import { mergeHookConfigs } from './merge.js'
@@ -257,7 +257,7 @@ export function apply(ctx, config = {}) {
    */
   async function runCommandHook(ctx, hook, point, payload, opts) {
     const command = substituteCommand(hook.command, opts.projectDir !== undefined ? { projectDir: opts.projectDir } : {})
-    return runHook(ctx.shell, {
+    return runShellHook(ctx.shell, {
       command,
       ...(hook.timeoutSec !== undefined ? { timeoutSec: hook.timeoutSec } : {}),
     }, {

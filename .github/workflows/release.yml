@@ -1,9 +1,11 @@
 name: Release
 
-# npm publish for the six dsh-cc packages, in dependency order (dsh-cc-loader
-# first). Triggered by a `v*` tag (e.g. v0.1.1). Requires the repository
-# Secret NPM_TOKEN — a granular access token with read+write on the six
-# packages and "2FA bypass" enabled (the account uses 2FA).
+# npm publish for the seven dsh-cc packages, in dependency order (dsh-cc-loader
+# first, the dsh-cc-ecosystem umbrella LAST because it depends on the other six).
+# Triggered by a `v*` tag (e.g. v0.1.1). Requires the repository Secret NPM_TOKEN
+# — a granular access token with read+write on ALL SEVEN packages (a new package
+# is not covered by an existing token's package list) and "2FA bypass" enabled
+# (the account uses 2FA).
 #
 # After the tag is pushed and the workflow succeeds, create a GitHub Release
 # from the tag with release notes.
@@ -56,6 +58,14 @@ jobs:
 
       - name: Publish dsh-cc-mcp
         working-directory: packages/cc-mcp
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Last: the umbrella depends on all six, so its ranges must already be
+      # resolvable on the registry when this runs.
+      - name: Publish dsh-cc-ecosystem
+        working-directory: packages/cc-ecosystem
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

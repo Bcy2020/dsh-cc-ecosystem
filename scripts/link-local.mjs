@@ -4,8 +4,8 @@
 // WHY
 // ---
 // The monorepo deliberately has no workspace management: each package declares
-// `dsh-cc-loader: ^0.1.0` and installs it from the registry, because that is
-// exactly what a consumer (and the DSH profile) resolves. The cost is that a
+// a `dsh-cc-loader` semver range and installs it from the registry, because that
+// is exactly what a consumer (and the DSH profile) resolves. The cost is that a
 // change to `packages/cc-loader/src` is invisible to the packages that import
 // it — their tests keep running against the last PUBLISHED loader. That blind
 // spot is how the 0.1.5 breakage reached a live profile: the adapters were
@@ -31,7 +31,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const loaderDir = join(root, 'packages', 'cc-loader')
 
 /** Packages that depend on dsh-cc-loader. */
-const DEPENDENTS = ['cc-skills', 'cc-permissions', 'cc-agents', 'cc-hooks', 'cc-mcp']
+const DEPENDENTS = ['cc-skills', 'cc-permissions', 'cc-agents', 'cc-hooks', 'cc-mcp', 'cc-ecosystem']
 
 if (!existsSync(join(loaderDir, 'package.json'))) {
   console.error(`link-local: no packages/cc-loader at ${loaderDir}`)

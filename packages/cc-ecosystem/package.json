@@ -1,0 +1,36 @@
+{
+  "name": "dsh-cc-ecosystem",
+  "version": "0.3.1",
+  "description": "One-install bundle for the whole dsh-cc ecosystem: pulls in dsh-cc-loader plus the five Claude Code adapters (skills, permissions, agents, hooks, mcp) and mounts all of them in one profile layer.",
+  "type": "module",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "README.md",
+    "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "claude-code",
+    "bundle",
+    "meta"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "dsh-cc-loader": "^0.3.1",
+    "dsh-cc-skills": "^0.3.1",
+    "dsh-cc-permissions": "^0.4.1",
+    "dsh-cc-agents": "^0.3.1",
+    "dsh-cc-hooks": "^0.3.1",
+    "dsh-cc-mcp": "^0.3.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": "git+https://github.com/Bcy2020/dsh-cc-ecosystem.git",
+  "homepage": "https://github.com/Bcy2020/dsh-cc-ecosystem"
+}
