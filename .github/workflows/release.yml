@@ -69,3 +69,29 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Most installs resolve through npmmirror, and it occasionally misses a
+      # version — silently, and without self-healing. In v0.3.1 it missed
+      # dsh-cc-loader, the one package the other six depend on, and installs
+      # stayed broken for four hours. Trigger each sync explicitly instead of
+      # waiting for a user to report it.
+      - name: Sync the published versions to npmmirror
+        run: |
+          set -eu
+          for p in dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents \
+                   dsh-cc-hooks dsh-cc-mcp dsh-cc-ecosystem; do
+            dir="packages/${p#dsh-}"
+            ver=$(node -p "require('./$dir/package.json').version")
+            # npm serves a publish asynchronously ("may take a few minutes to
+            # become available"), and the mirror can only sync what the registry
+            # already returns — so wait for the version before asking.
+            ready=no
+            for _ in $(seq 1 30); do
+              if curl -fsS "https://registry.npmjs.org/$p" | grep -q "\"$ver\""; then ready=yes; break; fi
+              sleep 10
+            done
+            echo "==> $p@$ver (visible on the registry: $ready)"
+            curl -fsS -X PUT "https://registry.npmmirror.com/-/package/$p/syncs" \
+              || echo "    sync request failed — retry with: curl -X PUT https://registry.npmmirror.com/-/package/$p/syncs"
+            echo
+          done

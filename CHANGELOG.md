@@ -9,6 +9,30 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.3.2 — 修复 0.2.0 上四处静默失效
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.3.2**,
+`cc-permissions` **0.4.2**。
+
+这四处缺陷在 0.2.0 上都是**静默**失败 —— 不抛错、日志里一个字都没有、插件照常加载。全部在真机 0.2.0 profile 上复现并验证过,不只是单元测试。
+
+- **含方括号的权限规则让每一轮都失败**([#8]) —— glob 转换把任何 `[...]` 原样当正则字符类,于是文件名叫 `[11-04-54]` 的规则会生成 `1-0` 这种反向区间,`new RegExp` 抛 `Range out of order in character class`;而规则在**每个工具调用**上都要编译,所以一条坏规则拖垮整个权限闸,连无关命令一起拦。
+  字符类本来就只是 **path 方言**的特性(文件头注释一直这么写):现在只在 path 模式里解析 `[...]`,命令与域名模式里 `[` 是普通字符;即便在 path 模式,不是合法正则的类(如 `[11-04-54]`)也降级成字面量而不是抛错。
+- **`agent/session-start` 在 0.2.0 被移除**([#7]) —— 0.2.0 把边界挪到 `agent/created` 并补上了 `source`。两代的名字**不是别名**:0.1.5 的 `agent/created` 只有 `{agent}`,没有 `source`,直接改名会把 `source` 悄悄丢掉(而 SessionStart hook 的载荷需要它)。
+  新增 `packages/cc-loader/src/session-start-compat.js` 统一拥有这个边界:双监听、只对带 `source` 的载荷动作,两代都恰好触发一次。它同时给出 0.2.0 所需的两个保证 —— 永不返回处理器的 promise、永不让抛错逃逸,因为 0.2.0 的 `agent/created` 是**串行**事件,监听器拒绝会否决会话发布。
+- **注入消息用了已退役的 V3 source**(发版后真机验证才暴露)—— 0.2.0 的会话格式 v4 准入门校验**每一条**持久化消息的 `source`:`kind` 必须是非空字符串**且不等于 `'plugin'`**,否则抛 `format v4 message requires a producer-owned source kind`,**整轮失败**。
+  cc-hooks(3 处)与 cc-agents(1 处)一直在用 V3 的 `{kind:'plugin', plugin:…}`,于是每条注入路径都是地雷 —— SessionStart 上下文、hook 注入的上下文、prompt/agent hook 结果、以及 cc-agents 的目录提醒。
+  新增 `packages/cc-loader/src/message-source.js` 集中产出合规 source,并加了一条扫描全部包源码的漂移守卫。
+- **cc-hooks 在事件边界裸解引用 `agent.session`**(发版后真机验证才暴露)—— 0.2.0 先 announce agent、后挂 session,所以 `agent.session` 此时可能还是 `undefined`。SessionStart 监听器的第一行就抛,而兼容边界按设计吞掉它(监听器不能否决会话发布),于是处理器死在那一行、`runPoint` 根本没机会跑。
+  表现为**插件正常加载、其它 hook 点全正常,只有 SessionStart 静默全死** —— 真机会话里 SessionStart 的 `hook/invoked` 一条都没有。
+
+**发布流程**:`release.yml` 末尾新增 npmmirror 同步步骤 —— 发布后逐个等待版本在官方 registry 可见,再显式触发镜像同步。v0.3.1 时镜像漏了 `dsh-cc-loader`(其余六个都依赖它),安装卡了四小时。
+
+**未包含**:[#2](https://github.com/Bcy2020/dsh-cc-ecosystem/issues/2)(Windows 上 `Bash(...)` 规则不覆盖 pwsh)、[#9](https://github.com/Bcy2020/dsh-cc-ecosystem/issues/9)(非严格 YAML frontmatter 的 agent 被丢弃)、[#10](https://github.com/Bcy2020/dsh-cc-ecosystem/issues/10)(Windows 上 command hook 不运行)、[#11](https://github.com/Bcy2020/dsh-cc-ecosystem/issues/11)(rules 不递归 / `.claude` 不作项目根标记),均仍未修复。
+
+[#7]: https://github.com/Bcy2020/dsh-cc-ecosystem/issues/7
+[#8]: https://github.com/Bcy2020/dsh-cc-ecosystem/issues/8
+
 ## v0.3.1 — 双宿主支持 + 全家桶 meta 包
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` **0.3.1**,
