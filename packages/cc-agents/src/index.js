@@ -21,7 +21,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { loadClaude, onSessionStart, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
+import { injectedSource, loadClaude, onSessionStart, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
 
 export const name = 'cc-agents'
 export const inject = ['tools', 'subagents']
@@ -56,8 +56,8 @@ export const Config = z.object({
   modelAliases: z.dict(z.string()).default({}),
 })
 
-/** The `{kind:'plugin'}` source stamped on every context this adapter injects. */
-const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'cc-agents' }
+/** Source for the catalog reminder this adapter injects — see dsh-cc-loader's message-source.js. */
+const PLUGIN_SOURCE = injectedSource('cc-agents')
 
 export function apply(ctx, config = {}) {
   const homeDir = config.homeDir ?? homedir()

@@ -45,3 +45,5 @@ export { sessionEvents, sessionEventAt, sessionLastEvent } from './session-compa
 // "A session has started" moved from `agent/session-start` (0.1.5) to
 // `agent/created` + `source` (0.2.0). This boundary is the only place that knows.
 export { onSessionStart } from './session-start-compat.js'
+// What `source` an injected message must carry for the host's v4 admission gate.
+export { injectedSource } from './message-source.js'

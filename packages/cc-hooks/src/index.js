@@ -47,7 +47,7 @@ import {
   runMcpToolHook,
   runPromptHook,
 } from './executors.js'
-import { ccBucket, onSessionStart, sessionLastEvent } from 'dsh-cc-loader'
+import { ccBucket, injectedSource, onSessionStart, sessionLastEvent } from 'dsh-cc-loader'
 
 export const name = 'cc-hooks'
 // `shell` is required to run hooks; the rest are read opportunistically via
@@ -82,8 +82,8 @@ export const Config = z.object({
  */
 const SUBAGENT_TYPE = 'general-purpose'
 
-/** The `{kind:'plugin'}` source stamped on every context this plugin injects. */
-const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'cc-hooks' }
+/** Source for context this plugin injects — see dsh-cc-loader's message-source.js. */
+const PLUGIN_SOURCE = injectedSource('cc-hooks')
 
 /** A stable per-handler id so an invoked/result pair correlates in the log. */
 let handlerCounter = 0
