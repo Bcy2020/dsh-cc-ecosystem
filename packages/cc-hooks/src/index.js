@@ -47,7 +47,7 @@ import {
   runMcpToolHook,
   runPromptHook,
 } from './executors.js'
-import { ccBucket, sessionLastEvent } from 'dsh-cc-loader'
+import { ccBucket, onSessionStart, sessionLastEvent } from 'dsh-cc-loader'
 
 export const name = 'cc-hooks'
 // `shell` is required to run hooks; the rest are read opportunistically via
@@ -110,7 +110,7 @@ export function apply(ctx, config = {}) {
   const projectRootMarkers = config.projectRootMarkers ?? ['.git']
 
   // Per-cwd cache of the merged parsed config, discovered at
-  // agent/session-start (each new session re-reads hooks.json; a new session
+  // session start (each new session re-reads hooks.json; a new session
   // naturally sees config edits) and lazily on first use (a hook can fire
   // before the session-start preload settles). Concurrent discovery for the
   // same cwd is deduped via the in-flight map.
@@ -305,8 +305,10 @@ export function apply(ctx, config = {}) {
 
   // SessionStart preloads the session config and runs SessionStart hooks
   // detached; a slow hook may miss the first request (same caveat as the
-  // official bridge).
-  ctx.on('agent/session-start', ({ agent, source }) => {
+  // official bridge). `onSessionStart` owns the host move from
+  // `agent/session-start` to `agent/created`, and keeps this listener from
+  // stalling session publication on 0.2.0.
+  onSessionStart(ctx, ({ agent, source }) => {
     const cwd = agent.session.header?.cwd
     if (cwd !== undefined) {
       void configFor(cwd).catch((error) => ctx.logger.warn(`cc-hooks: preload failed for ${cwd}: ${String(error)}`))

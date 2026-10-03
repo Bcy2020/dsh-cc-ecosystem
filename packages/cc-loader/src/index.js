@@ -42,3 +42,6 @@ export {
 // Session event-log readers. `Session.events` was removed in DSH 0.1.2-alpha.4
 // and is gone in 0.1.5; every plugin read of the log goes through these.
 export { sessionEvents, sessionEventAt, sessionLastEvent } from './session-compat.js'
+// "A session has started" moved from `agent/session-start` (0.1.5) to
+// `agent/created` + `source` (0.2.0). This boundary is the only place that knows.
+export { onSessionStart } from './session-start-compat.js'

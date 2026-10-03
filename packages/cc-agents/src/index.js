@@ -4,7 +4,7 @@
 // CC agents are identity-anchored subagents: frontmatter (name/description/
 // tools/disallowedTools/model/skills/…) + a system-prompt body. DSH has no
 // pre-registered agent directory, so this adapter provides both halves:
-//   1. catalog injection (agent/session-start → user message): the model sees
+//   1. catalog injection (session start → user message): the model sees
 //      the available agents' name + description (CC @-mention semantics).
 //   2. a `cc_agent` delegation tool: looks the agent up, then starts a
 //      subagent via ctx.subagents with
@@ -21,7 +21,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { loadClaude, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
+import { loadClaude, onSessionStart, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
 
 export const name = 'cc-agents'
 export const inject = ['tools', 'subagents']
@@ -93,14 +93,18 @@ export function apply(ctx, config = {}) {
     return entry
   }
 
-  // ─── catalog injection (agent/session-start) ──────────────────────────────
+  // ─── catalog injection (session start) ────────────────────────────────────
   // Top-level sessions only: subagents (delegated children carry a
   // parentSession header) get their own system prompt — the CC agent body as
   // persona — and must NOT receive the parent's catalog reminder. Injecting it
   // would append a user message after the delegation prompt, which the child
   // then mistakes for its actual task.
+  //
+  // `onSessionStart` spans the host move from `agent/session-start` (0.1.5) to
+  // `agent/created` (0.2.0) and runs the discovery below detached, so it cannot
+  // stall session publication.
   if (config.injectCatalog !== false) {
-    ctx.on('agent/session-start', async ({ agent }) => {
+    onSessionStart(ctx, async ({ agent }) => {
       try {
         if (agent?.session?.header?.parentSession !== undefined) return
         const { agents } = await catalogFor(agent)
