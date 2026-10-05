@@ -445,7 +445,7 @@ async function isFile(path) {
 async function discoverCommandFile(filePath, source, rank, warnings = []) {
   const raw = await readTextSafe(filePath)
   if (raw === undefined) return undefined
-  const parsed = parseFrontmatter(raw)
+  const parsed = parseFrontmatter(raw, warnings, `command "${filePath}"`)
   const stem = filePath.split(/[\\/]/).pop().replace(/\.md$/, '')
   if (!isSkillName(stem)) {
     warnings.push(`command "${filePath}" skipped: name not kebab-case`)
@@ -478,7 +478,7 @@ async function discoverCommandFile(filePath, source, rank, warnings = []) {
 async function discoverAgentFile(filePath, scope, rank, warnings = []) {
   const raw = await readTextSafe(filePath)
   if (raw === undefined) return undefined
-  const parsed = parseFrontmatter(raw)
+  const parsed = parseFrontmatter(raw, warnings, `agent "${filePath}"`)
   if (parsed === undefined) {
     warnings.push(`agent "${filePath}" skipped: no frontmatter`)
     return undefined
