@@ -81,10 +81,11 @@ export async function readTextSafe(path) {
 /**
  * Collect skills + commands from one `.claude` dir into `out` (project or
  * global). Each entry carries its IR status; unsupported entries are filtered.
+ * @param {string[]} [warnings] - collector, shared with the callers that have
+ *   their own warnings to report (load.js). Omit to get a fresh array back.
  * @returns {Promise<{skills: object[], commands: object[], warnings: string[]}>}
  */
-export async function collectClaudeDir(claudeDir, source, rank) {
-  const warnings = []
+export async function collectClaudeDir(claudeDir, source, rank, warnings = []) {
   const skills = await discoverSkills(join(claudeDir, 'skills'), source, rank, warnings)
   const commands = await discoverCommands(join(claudeDir, 'commands'), source, rank, warnings)
   return { skills, commands, warnings }
@@ -156,7 +157,7 @@ export async function discoverCommands(rootDir, source, rank, warnings = []) {
     }
     const raw = await readTextSafe(path)
     if (raw === undefined) continue
-    const parsed = parseFrontmatter(raw)
+    const parsed = parseFrontmatter(raw, warnings, `command "${entry.name}"`)
     const description = parsed === undefined ? stem : (stringField(parsed.data, 'description') ?? stem)
     // Command tool-scope fields (CC kebab-case, same shape as skills).
     const allowedTools = parsed === undefined ? [] : stringList(parsed.data, 'allowed-tools')
@@ -185,7 +186,7 @@ export async function discoverCommands(rootDir, source, rank, warnings = []) {
 async function parseSkillCandidateFile(path, source, rank, flatName, warnings = []) {
   const raw = await readTextSafe(path)
   if (raw === undefined) return undefined
-  const parsed = parseFrontmatter(raw)
+  const parsed = parseFrontmatter(raw, warnings, `skill "${path}"`)
   if (parsed === undefined) {
     warnings.push(`skill "${path}" skipped: no frontmatter`)
     return undefined
@@ -235,18 +236,81 @@ async function parseSkillCandidateFile(path, source, rank, flatName, warnings = 
 
 // ─── frontmatter helpers ─────────────────────────────────────────────────────
 
-export function parseFrontmatter(raw) {
+/**
+ * Read the `---`-delimited block at the top of a `.claude` markdown file.
+ *
+ * Claude Code tolerates frontmatter that strict YAML rejects, so dropping a
+ * file on a parse error loses assets CC reads happily. The recurring shape is
+ * an unquoted `description` carrying a second `: ` — community agent files
+ * produce it by putting `Context: …` or `user: '…'` inside `<example>` blocks.
+ * A failed strict parse therefore falls back to flat `key: value` lines, and
+ * says so through `warnings` rather than degrading in silence.
+ *
+ * @param {string} raw - whole file.
+ * @param {string[]} [warnings] - collector for the lenient-parse notice.
+ * @param {string} [label] - what to call the file in that notice. Callers own
+ *   the path, so they supply it (`agent "/…/x.md"`).
+ * @returns {{ data: object, body: string } | undefined}
+ */
+export function parseFrontmatter(raw, warnings, label) {
   const firstLineEnd = raw.indexOf('\n')
   if (firstLineEnd < 0) return undefined
   if (raw.slice(0, firstLineEnd).replace(/\r$/, '') !== '---') return undefined
   const start = firstLineEnd + 1
   const closing = findClosingFrontmatter(raw, start)
   if (closing === undefined) return undefined
+  const block = raw.slice(start, closing.start)
   let parsed
-  try { parsed = parse(raw.slice(start, closing.start)) }
-  catch { return undefined }
+  let reason
+  try {
+    parsed = parse(block)
+  } catch (error) {
+    parsed = parseLenient(block)
+    if (parsed === undefined) return undefined
+    reason = firstLineOf(String(error?.message ?? error))
+  }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
+  if (reason !== undefined && warnings !== undefined) {
+    warnings.push(`${label ?? 'frontmatter'} has frontmatter strict YAML rejects (${reason}) — read as flat key: value; only top-level fields survive`)
+  }
   return { data: parsed, body: raw.slice(closing.bodyStart) }
+}
+
+// Fields Claude Code documents as comma-separated lists. Strict YAML turns them
+// into real arrays on its own, so this set matters only on the lenient path —
+// without it `tools: Read, Bash` arrives as one bogus entry named "Read, Bash".
+const COMMA_LIST_FIELDS = new Set([
+  'tools', 'disallowedTools', 'skills', 'allowed-tools', 'disallowed-tools',
+])
+
+/**
+ * Flat `key: value` reader for a frontmatter block strict YAML rejected. Every
+ * value stays a string except the documented comma lists above — coercing
+ * numbers would turn `description: 2024` into a number and lose the field. Only
+ * top-level unindented lines are read, so anything needing nesting or
+ * multi-line syntax is lost; this is a last resort, not a general YAML parser.
+ */
+function parseLenient(block) {
+  const data = {}
+  let found = false
+  for (const line of block.split('\n')) {
+    const m = /^([A-Za-z][\w-]*):[ \t]?(.*)$/.exec(line.replace(/\r$/, ''))
+    if (m === null) continue
+    const value = m[2].trim()
+    if (value.length === 0) continue
+    found = true
+    data[m[1]] = COMMA_LIST_FIELDS.has(m[1])
+      ? value.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
+      : value
+  }
+  return found ? data : undefined
+}
+
+function firstLineOf(message) {
+  const end = message.indexOf('\n')
+  const line = (end < 0 ? message : message.slice(0, end)).trim()
+  // YAML's first line ends with the colon that introduces its code frame.
+  return line.endsWith(':') ? line.slice(0, -1).trim() : line
 }
 
 function findClosingFrontmatter(raw, start) {

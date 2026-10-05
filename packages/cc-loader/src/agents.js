@@ -57,7 +57,7 @@ export async function discoverAgents(agentsDir, scope, rank, warnings = []) {
     }
     const raw = await readTextSafe(path)
     if (raw === undefined) continue
-    const parsed = parseFrontmatter(raw)
+    const parsed = parseFrontmatter(raw, warnings, `agent "${path}"`)
     if (parsed === undefined) {
       warnings.push(`agent "${path}" skipped: no frontmatter`)
       continue

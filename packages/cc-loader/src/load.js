@@ -66,8 +66,9 @@ export async function loadClaude(opts = {}) {
   }
 
   // Agents: merge project + global into one catalog (project wins on name clash).
+  // mergeAgentCatalog reports into the array it was handed, so there is nothing
+  // to merge back — repeating that push duplicated every agent warning.
   const catalog = await mergeAgentCatalog(agentRoots, warnings)
-  warnings.push(...catalog.warnings)
 
   // Permissions: discover the three settings files and merge.
   const discovered = await discoverSettings(cwd, {

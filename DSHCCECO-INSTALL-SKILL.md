@@ -110,7 +110,7 @@ node --input-type=module -e "await import('file:///C:/.../packages/cc-skills/src
 - **cc-agents**：出现 `cc_agent` 工具；配了 `pluginRoots` 时目录出现 `plugin-<插件>-<代理>`（需插件带 agents/）
 - **cc-mcp**：项目根 `.mcp.json` 的服务器工具出现为 `mcp__<server>__<tool>`；插件目录的为 `mcp__plugin_<插件>_<server>__<tool>`（插件名取 plugin.json 的 `name`，无 manifest 才用目录名）
 
-**③ 测试资产注意**：SKILL.md frontmatter 的 description 用 `|` 块标量；纯标量里 `冒号+空格`（如 `Marker: x`）会导致 YAML 解析失败、技能被静默跳过。
+**③ 测试资产注意**：SKILL.md/agent frontmatter 的 description 建议用 `|` 块标量。纯标量里的 `冒号+空格`（如 `Marker: x`）不是合法 YAML，但加载器会退回逐行 `key: value` 解析，并在 `warnings` 里报出是哪一行退化了 —— 不会再静默跳过。只有连一行 `key: value` 都读不出来时才真正丢弃。
 
 ## 4. 会话要求
 
