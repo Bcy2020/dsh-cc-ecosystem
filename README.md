@@ -55,11 +55,12 @@ dsh plugin --profile <name> add dsh-cc-skills dsh-cc-mcp      # 例:只要技能
 
 | 你的 DSH 版本 | 用哪个 |
 |---|---|
-| `0.1.5-rc.2` 或 `0.2.0-rc.2` | **`v0.3.2`(当前)** —— 一条版本线同时兼容这两代 |
+| `0.1.5-rc.2` 或 `0.2.0-rc.2` | **`v0.3.3`(当前)** —— 一条版本线同时兼容这两代 |
 | `0.1.0-rc.7` ~ `0.1.1-rc.2` | `v0.1.x`(已停止维护) |
 
 用 `0.2.0` 就必须是 `v0.3.1` 或更新:更早的版本会被 DSH 的插件安装检查直接拒绝。
-`v0.3.2` 修掉了 0.2.0 上的四处静默失效(括号规则、SessionStart、消息 source、session 读取),详见 [CHANGELOG](CHANGELOG.md)。
+`v0.3.3` 让 Claude Code 读得了、但 YAML 不严格的 frontmatter 不再被静默丢弃 —— 此前这类 agent / 技能 / 斜杠命令会整个消失,详见 [CHANGELOG](CHANGELOG.md)。
+`v0.3.2` 修掉了 0.2.0 上的四处静默失效(括号规则、SessionStart、消息 source、session 读取)。
 
 ## 支持的权限语义
 

@@ -9,6 +9,21 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.3.3 — 非严格 YAML frontmatter 不再被丢弃
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.3.3**,
+`cc-permissions` **0.4.3**。代码改动只在 `dsh-cc-loader`,其余六包随家族同步升版。
+
+- **Claude Code 读得了、DSH 却整个丢弃的 frontmatter 现在能正常加载**([#9]) —— `parseFrontmatter` 一遇 `yaml.parse` 抛错就 `return undefined`,调用方只报一句 `skipped: no frontmatter`,于是**文件在 DSH 里等于不存在**。最常见的触发写法是**未加引号的 `description` 里出现了第二个 `: `** —— 社区 agent 文件在 `<example>` 块里写 `Context: …` / `user: '…'` 就会这样。实测同样会丢整个文件的还有:值换行且续行有缩进、用 Tab 缩进、同一个 key 写两遍、值以 `*` 开头。
+  现在严格解析失败时退回**逐行 `key: value`** 读取,并把降级**报进 `warnings`**(附上 YAML 的原始报错行),不再静默。技能、斜杠命令、子代理、插件内组件共用这一个解析器,四类一起受益。
+  两处实现取舍值得记住:值**一律保持字符串**,否则 `description: 2024` 会被转成数字、被 `stringField` 拒绝,等于拿「丢文件」换了「丢字段」;而 Claude Code 文档里本就是逗号分隔的五个字段(`tools` / `disallowedTools` / `skills` / `allowed-tools` / `disallowed-tools`)会**按逗号切开**,否则 `tools: Read, Grep, Glob` 会变成一个叫 `"Read, Grep, Glob"` 的假工具名 —— 文件救回来了,agent 却没有工具。
+- **顺带修掉同一段告警管道里的两条既有缺陷** —— 都是在接这条新告警时撞出来的,不修的话新提示要么看不见、要么看两遍:
+  - `loadClaude` 把 `mergeAgentCatalog` 的返回值又 push 回它自己刚填充过的那个数组 → **每条 agent 告警打印两遍**;
+  - `collectClaudeDir` 忽略了调用方传进来的告警收集器、自己新建一个又没人合并 → **skill 与 command 的告警被整个丢弃**(包括既有的 `skipped: name not kebab-case` 之类)。
+- **仍未覆盖**:整块 frontmatter 里连一行 `key: value` 都读不出来时,文件依旧被丢弃,提示依旧是 `no frontmatter`。对这类文件该措辞是准的,但对「有 frontmatter、只是 YAML 不严格」的文件曾经是误导。
+
+**测试**:`packages/cc-loader/test/frontmatter-lenient.test.mjs`(11 例,含经 `discoverAgents` 与 `loadClaude` 的端到端;覆盖报告里的原始形状、其余几种严格 YAML 失败、逗号列表拆分、字符串不被数字化,以及「真的读不出来」仍返回 undefined)。做了**变异验证** —— 把兜底退回旧行为有 6 例转红、去掉逗号拆分有 2 例转红。全仓库 296 例。
+
 ## v0.3.2 — 修复 0.2.0 上四处静默失效
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.3.2**,
@@ -32,6 +47,7 @@
 
 [#7]: https://github.com/Bcy2020/dsh-cc-ecosystem/issues/7
 [#8]: https://github.com/Bcy2020/dsh-cc-ecosystem/issues/8
+[#9]: https://github.com/Bcy2020/dsh-cc-ecosystem/issues/9
 
 ## v0.3.1 — 双宿主支持 + 全家桶 meta 包
 
