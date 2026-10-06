@@ -21,21 +21,43 @@ Load your Claude Code `.claude/` assets (skills, commands, rules, permissions, a
 
 ## 安装
 
+> **务必带上版本号。**不带版本号会被解析到一个**更旧的**版本,而且安装过程照样报成功 —— 原因见 [为什么要带版本号](#为什么要带版本号)。
+
 一条命令装齐(**推荐**):
 
 ```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem
+dsh plugin --profile <name> add "dsh-cc-ecosystem@$(npm view dsh-cc-ecosystem version)"
 ```
 
-在 DSH 的 Web GUI 里直接粘贴包名 `dsh-cc-ecosystem` 效果相同。
+Web GUI 里同样是填 `包名@版本号`;版本号先查出来:
+
+```sh
+npm view dsh-cc-ecosystem version     # 例:0.3.4
+```
 
 也可以只装需要的部分:
 
 ```sh
-dsh plugin --profile <name> add dsh-cc-skills dsh-cc-mcp      # 例:只要技能和 MCP
+dsh plugin --profile <name> add "dsh-cc-skills@$(npm view dsh-cc-skills version)" "dsh-cc-mcp@$(npm view dsh-cc-mcp version)"
 ```
 
 `dsh-cc-loader` 是下面几个包共用的解析层,会作为依赖自动装上,通常不必单独安装。
+
+### 为什么要带版本号
+
+pnpm 11 起默认开启 **`minimumReleaseAge`**(1440 分钟 = 1 天,见 [pnpm 官方文档](https://pnpm.io/supply-chain-security)):**发布不满 24 小时的版本,解析器不选它**,而是安静地留在或退到一个更旧的、已经"成熟"的版本上,**退出码依旧是 0**。所以"安装成功"并不等于装上了最新版 —— 装完请用 GUI 徽章或 `pnpm list` 核对实际版本。
+
+同一个包、同一时刻的实测差别(`dsh-cc-ecosystem` 发布 4 小时时):
+
+| 输入 | 实际装到 | 为什么 |
+|---|---|---|
+| `dsh-cc-ecosystem` / `dsh-cc-ecosystem@latest` | **0.3.3** | dist-tag 不豁免,0.3.4 被挡 |
+| `dsh-cc-ecosystem@^0.3.4` | 0.3.4 | 该范围内只剩 0.3.4 一个候选,被自动豁免 —— **但下一版就失效** |
+| `dsh-cc-ecosystem@0.3.4` | 0.3.4 | 精确版本,**只有这种写法是稳的** |
+
+**升级同理**:装过旧版的用户,不带版本号再点一次安装**不会升级**。重复带版本号的安装即可。
+
+若不想受这条策略约束,可在 profile 的 `pnpm-workspace.yaml` 里设 `minimumReleaseAge: 0`(全局关闭,慎用),或用 `minimumReleaseAgeExclude` 逐版本豁免 —— 后者按版本钉死,**每发一版都要补一次**,容易腐烂。
 
 ### 各包一览
 
