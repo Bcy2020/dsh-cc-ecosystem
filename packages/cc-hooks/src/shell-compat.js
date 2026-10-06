@@ -61,7 +61,8 @@ async function executeShell(shell, request) {
  * @param {any} shell - the host shell service (`ctx.shell`).
  * @param {{ command: string, timeoutSec?: number }} hook - the parsed hook.
  * @param {{ payload: unknown, defaultTimeoutMs: number, trailingNewline?: boolean,
- *   expectedEventName?: string, signal?: AbortSignal, cwd?: string, env?: Record<string, string> }} options
+ *   expectedEventName?: string, signal?: AbortSignal, cwd?: string,
+ *   env?: Record<string, string>, sandboxPolicy?: object }} options
  * @param {() => number} now - monotonic clock.
  * @returns {Promise<{ output: any, durationMs: number }>}
  */
@@ -74,6 +75,10 @@ export async function runShellHook(shell, hook, options, now) {
     timeoutMs,
     stdin,
     signal: options.signal,
+    // Without this the executor resolves the sandbox against its own
+    // deployment root instead of the calling session's workspace, which on
+    // Windows makes the ACL runner refuse the hook outright.
+    ...(options.sandboxPolicy !== undefined ? { sandboxPolicy: options.sandboxPolicy } : {}),
     ...(options.cwd !== undefined ? { workdir: options.cwd } : {}),
     ...(options.env !== undefined ? { env: options.env } : {}),
   }
@@ -94,4 +99,64 @@ export async function runShellHook(shell, hook, options, now) {
       durationMs: now() - started,
     }
   }
+}
+
+// ─── shell dialect ──────────────────────────────────────────────────────────
+//
+// Claude Code runs hooks through bash, and hook commands are written for it.
+// DSH's `ctx.shell` on Windows is a PowerShell executor, and the two dialects
+// disagree on one common shape: a command whose first token is a quoted path
+// (`"C:/Program Files/nodejs/node.exe" script.mjs`) is a call in bash but a
+// bare string expression in PowerShell, where it is a parse error.
+//
+// The host gives no way to ask which it is — `ShellExecutor` exposes only
+// `sandboxMode`, and the pwsh and bash executors register the same service —
+// so the dialect is probed once and cached.
+
+/**
+ * One-shot probe for the dialect the host shell speaks. POSIX shells expand
+ * `$BASH_VERSION`; PowerShell leaves it empty, so non-empty stdout means a
+ * POSIX shell. `undefined` means the probe itself could not run, which callers
+ * read as "fall back to the platform default".
+ *
+ * @param {any} shell - the host shell service (`ctx.shell`).
+ * @param {object} [request] - extra fields for the probe request — notably the
+ *   resolved `sandboxPolicy`, without which a confined host refuses to run it.
+ * @returns {Promise<'posix' | 'pwsh' | undefined>}
+ */
+export async function probeShellDialect(shell, request = {}) {
+  try {
+    const result = await executeShell(shell, { command: 'echo "$BASH_VERSION"', ...request })
+    const stdout = result?.stdout?.text ?? ''
+    return stdout.trim() === '' ? 'pwsh' : 'posix'
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Whether the dialect could change how a command is read — true only when its
+ * first token is a quoted string. Callers use this to skip resolving the
+ * dialect (and paying for a probe) when the answer cannot matter.
+ *
+ * @param {string} command - the substituted command.
+ * @returns {boolean}
+ */
+export function needsCallOperator(command) {
+  return /^["']/.test(command.trimStart())
+}
+
+/**
+ * Make a command callable in the host dialect. PowerShell reads a leading
+ * quoted string as a value rather than a command and needs the call operator;
+ * that operator is itself a syntax error in POSIX shells, so it is never added
+ * there.
+ *
+ * @param {string} command - the substituted command.
+ * @param {'posix' | 'pwsh' | undefined} dialect - `undefined` leaves it alone.
+ * @returns {string}
+ */
+export function applyCallOperator(command, dialect) {
+  if (dialect !== 'pwsh' || !needsCallOperator(command)) return command
+  return `& ${command.trimStart()}`
 }

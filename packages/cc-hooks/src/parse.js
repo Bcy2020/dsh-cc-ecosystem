@@ -133,7 +133,18 @@ function parseHookHandler(event, hook, vars) {
   switch (type) {
     case 'command': {
       if (typeof hook.command !== 'string') return null
-      return { ir: { type, command: substituteCommand(hook.command, vars), ...commonFields(hook) } }
+      return {
+        ir: {
+          type,
+          command: substituteCommand(hook.command, vars),
+          // Kept so the runner can export it as CLAUDE_PLUGIN_ROOT. Claude Code
+          // sets that variable in a plugin hook's environment, and some plugins
+          // choose their output shape from it — substituting the command text
+          // alone never reaches them.
+          ...(vars.pluginRoot !== undefined ? { pluginRoot: vars.pluginRoot } : {}),
+          ...commonFields(hook),
+        },
+      }
     }
     case 'http': {
       if (typeof hook.url !== 'string' || hook.url === '') return null
