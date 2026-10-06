@@ -12,11 +12,32 @@ export function isSkillName(name) {
   return SKILL_NAME_RE.test(name)
 }
 
-export async function findProjectRoot(cwd, markers = ['.git']) {
+/**
+ * Walk up from `cwd` to the closest ancestor carrying one of `markers`.
+ *
+ * `.claude` is a default marker because Claude Code treats the nearest
+ * `.claude/` directory as the project configuration root — a project without a
+ * git repo still has a root.
+ *
+ * `opts.homeDir` is never itself a project root. Without the guard, a session
+ * outside any project walks up into the home directory, matches `~/.claude`
+ * (Claude Code's *global* config dir) and loads global skills and rules a
+ * second time as project-scoped ones. `findClaudeProjectRoot` excludes home for
+ * the same reason.
+ *
+ * @param {string} cwd - session working directory.
+ * @param {string[]} [markers] - directory names marking a project root.
+ * @param {{ homeDir?: string }} [opts] - directory excluded from the walk.
+ * @returns {Promise<string | undefined>} project root directory.
+ */
+export async function findProjectRoot(cwd, markers = ['.git', '.claude'], opts = {}) {
+  const homeDir = opts.homeDir
   let current = resolve(cwd)
   while (true) {
-    for (const marker of markers) {
-      if (await pathExists(join(current, marker))) return current
+    if (homeDir === undefined || current !== homeDir) {
+      for (const marker of markers) {
+        if (await pathExists(join(current, marker))) return current
+      }
     }
     const parent = dirname(current)
     if (parent === current) return undefined
@@ -91,24 +112,44 @@ export async function collectClaudeDir(claudeDir, source, rank, warnings = []) {
   return { skills, commands, warnings }
 }
 
-/** Rules dir `.claude/rules/*.md` — plain markdown, ordered by filename. */
+/**
+ * Rules from `.claude/rules` — plain markdown, ordered by relative path.
+ *
+ * The whole tree is walked. Rule packs commonly organize rules in folders
+ * (`rules/common/`, `rules/typescript/` …); a top-level-only read yields zero
+ * rules for those projects, so nothing is injected and the failure is silent.
+ * `name` is the path relative to the rules dir, which for a top-level file is
+ * just its filename.
+ *
+ * @param {string} rulesDir
+ * @param {string} scope - 'project' | 'user'.
+ * @returns {Promise<object[]>} rule IR entries.
+ */
 export async function discoverRules(rulesDir, scope) {
-  let entries
-  try { entries = await readdir(rulesDir, { withFileTypes: true, encoding: 'utf8' }) }
-  catch { return [] }
   const rules = []
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith('.md')) continue
-    const p = join(rulesDir, e.name)
-    rules.push({
-      path: p,
-      name: e.name,
-      scope,
-      status: 'DIRECT',
-    })
-  }
+  await walk(rulesDir, '')
   rules.sort((a, b) => a.name.localeCompare(b.name))
   return rules
+
+  async function walk(dir, prefix) {
+    let entries
+    try { entries = await readdir(dir, { withFileTypes: true, encoding: 'utf8' }) }
+    catch { return }
+    for (const entry of entries) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+        await walk(join(dir, entry.name), name)
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        rules.push({
+          path: join(dir, entry.name),
+          name,
+          scope,
+          status: 'DIRECT',
+        })
+      }
+    }
+  }
 }
 
 // ─── skills: recursive, ≤3 levels, bundle stops descent ─────────────────────

@@ -31,7 +31,7 @@ export const Config = z.object({
   // still reach the human answerer.
   autoApproveAllowed: z.boolean().default(true),
   homeDir: z.string(),
-  projectRootMarkers: z.array(z.string()).default(['.git']),
+  projectRootMarkers: z.array(z.string()).default(['.git', '.claude']),
 })
 
 export function apply(ctx, config = {}) {

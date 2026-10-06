@@ -40,7 +40,7 @@ dsh plugin --profile <name> add dsh-cc-skills
 | `enableGlobal` | `true` | Also scan `~/.claude` |
 | `globalClaudeDir` | `<home>/.claude` | Global Claude dir override |
 | `globalSkillRank` | `160` | Global rank (must be > project `skillRank` 150) |
-| `projectRootMarkers` | `['.git']` | Project root discovery markers |
+| `projectRootMarkers` | `['.git', '.claude']` | Project root discovery markers; `.claude` resolves projects without a `.git` repo. The user's home is never a root |
 | `skillRank` | `150` | Project skill rank |
 | `rulesMaxBytes` | `65536` | Rules injection size cap |
 

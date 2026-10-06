@@ -36,9 +36,10 @@ export async function loadClaude(opts = {}) {
 
   // Project root: explicit projectRootMarkers wins (caller control, e.g.
   // cc-mcp's configurable markers); otherwise CC semantics — closest
-  // .claude/ directory, falling back to the .git root, home excluded.
+  // .claude/ directory, falling back to the .git root. Home is excluded
+  // either way: `~/.claude` is the global config dir, not a project's.
   const projectRoot = opts.projectRootMarkers !== undefined
-    ? await findProjectRoot(cwd, opts.projectRootMarkers)
+    ? await findProjectRoot(cwd, opts.projectRootMarkers, { homeDir })
     : await findClaudeProjectRoot(cwd, { homeDir })
   const skills = []
   const commands = []

@@ -94,7 +94,7 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-hooks
 | `enableGlobal` | `true` | 是否加载 `~/.claude/hooks/hooks.json` |
 | `globalClaudeDir` | `~/.claude` | 用户级目录覆盖(测试用) |
 | `homeDir` | `os.homedir()` | 家目录覆盖(测试用) |
-| `projectRootMarkers` | `['.git']` | 项目根向上发现标记 |
+| `projectRootMarkers` | `['.git', '.claude']` | 项目根向上发现标记;`.claude` 让没有 git 仓库的项目也能定位到根 |
 | `projectDir` | 会话 cwd | `CLAUDE_PROJECT_DIR` 覆盖值 |
 
 ## hooks.json 格式速查(CC 官方格式,直传 JSON)

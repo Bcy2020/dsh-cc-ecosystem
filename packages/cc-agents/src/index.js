@@ -37,7 +37,7 @@ export const Config = z.object({
   enableRunInBackground: z.boolean().default(true),
   /** Absolute delegation-depth cap (default 3). */
   maxDepth: z.natural().max(Number.MAX_SAFE_INTEGER).default(3),
-  projectRootMarkers: z.array(z.string()).default(['.git']),
+  projectRootMarkers: z.array(z.string()).default(['.git', '.claude']),
   enableGlobal: z.boolean().default(true),
   globalClaudeDir: z.string(),
   homeDir: z.string(),
