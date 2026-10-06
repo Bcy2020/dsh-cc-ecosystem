@@ -35,7 +35,7 @@ import {
   matchesMatcher,
   mergeHookOutputs,
 } from '@deepseek-ai/dsh-hook-protocol'
-import { runShellHook } from './shell-compat.js'
+import { applyCallOperator, needsCallOperator, probeShellDialect, runShellHook } from './shell-compat.js'
 import { parseHooksConfig, substituteCommand } from './parse.js'
 import { discoverHookFiles } from './discover.js'
 import { mergeHookConfigs } from './merge.js'
@@ -73,6 +73,16 @@ export const Config = z.object({
   projectRootMarkers: z.array(z.string()).default(['.git', '.claude']),
   /** Optional CLAUDE_PROJECT_DIR override; default = the session workspace. */
   projectDir: z.string(),
+  /** Sandbox mode for command hooks. Empty follows the session's own policy;
+   *  `danger-full-access` runs them with no sandbox, which is how Claude Code
+   *  runs hooks. */
+  sandboxMode: z.union([
+    z.const(''), z.const('read-only'), z.const('workspace-write'), z.const('danger-full-access'),
+  ]).default(''),
+  /** Which language `ctx.shell` speaks. `auto` probes once on Windows, because
+   *  `ShellExecutor` exposes no identity: a host that swapped the pwsh executor
+   *  for bash (a shell-flip plugin) needs commands written for bash. */
+  shellDialect: z.union([z.const('auto'), z.const('posix'), z.const('pwsh')]).default('auto'),
 })
 
 /**
@@ -226,7 +236,7 @@ export function apply(ctx, config = {}) {
         const type = hook.type ?? 'command'
         const { output, durationMs } = await (type === 'command'
           ? runCommandHook(ctx, hook, point, payload, {
-              projectDir, hookEnv, workdir, defaultTimeoutMs,
+              projectDir, hookEnv, workdir, defaultTimeoutMs, session,
               signal: opts.signal,
               // Discard a hookSpecificOutput block whose hookEventName names a
               // different event than the one firing.
@@ -253,20 +263,86 @@ export function apply(ctx, config = {}) {
   }
 
   /**
+   * The sandbox policy for one hook run, resolved per call rather than cached:
+   * a session's mode can change mid-session, and cordis loads plugin rows in
+   * parallel, so `ctx.sandboxPolicy` may not even be registered when this
+   * plugin applies.
+   *
+   * Passing it is what keeps the executor's sandbox rooted at the calling
+   * session's workspace. Without it the executor falls back to its own
+   * deployment root — on Windows that puts `%TEMP%` inside the workspace and
+   * the ACL runner refuses the hook before it ever spawns.
+   */
+  function sandboxPolicyFor(session) {
+    const service = ctx.get('sandboxPolicy')
+    if (service === undefined) return undefined
+    try {
+      return service.resolve({
+        ...(session !== undefined ? { session } : {}),
+        ...(config.sandboxMode !== undefined && config.sandboxMode !== '' ? { mode: config.sandboxMode } : {}),
+      })
+    } catch (error) {
+      ctx.logger.warn(`cc-hooks: sandbox policy could not be resolved: ${String(error)}`)
+      return undefined
+    }
+  }
+
+  /**
+   * The host shell's dialect, resolved once. `ctx.shell` exposes no identity,
+   * so on Windows it is probed; the answer is fixed for the life of the
+   * loaded plugin (one executor per context), and it is logged because every
+   * command hook's shape depends on it.
+   */
+  let dialectPromise
+  function shellDialect() {
+    if (config.shellDialect !== undefined && config.shellDialect !== 'auto') {
+      return Promise.resolve(config.shellDialect)
+    }
+    // Only Windows can have swapped pwsh for a POSIX shell; elsewhere the
+    // platform already answers it and no probe is worth the spawn.
+    if (process.platform !== 'win32') return Promise.resolve('posix')
+    dialectPromise ??= (async () => {
+      const probed = await probeShellDialect(ctx.shell)
+      const dialect = probed ?? 'pwsh'
+      ctx.logger.info(
+        `cc-hooks: shell dialect ${dialect}${probed === undefined ? ' (probe could not run; assuming the win32 default)' : ''}`,
+      )
+      return dialect
+    })()
+    return dialectPromise
+  }
+
+  /**
    * Run one command hook through ctx.shell with the CC stdin framing
    * (JSON payload + newline) and per-event default timeout. The command is
    * `${CLAUDE_PROJECT_DIR}`-substituted at run time (per-session value).
    */
   async function runCommandHook(ctx, hook, point, payload, opts) {
-    const command = substituteCommand(hook.command, opts.projectDir !== undefined ? { projectDir: opts.projectDir } : {})
+    const substituted = substituteCommand(
+      hook.command,
+      opts.projectDir !== undefined ? { projectDir: opts.projectDir } : {},
+    )
+    // Only a command whose first token is quoted is read differently by the two
+    // dialects, and resolving the dialect can cost a probe — so ask only when
+    // the answer would actually change the command.
+    const dialect = needsCallOperator(substituted) ? await shellDialect() : undefined
+    const command = applyCallOperator(substituted, dialect)
+    const sandboxPolicy = sandboxPolicyFor(opts.session)
+    // Claude Code exports CLAUDE_PLUGIN_ROOT to a plugin hook's environment;
+    // some plugins pick their output shape from it rather than from the
+    // substituted command text.
+    const env = hook.pluginRoot !== undefined
+      ? { ...opts.hookEnv, CLAUDE_PLUGIN_ROOT: hook.pluginRoot }
+      : opts.hookEnv
     return runShellHook(ctx.shell, {
       command,
       ...(hook.timeoutSec !== undefined ? { timeoutSec: hook.timeoutSec } : {}),
     }, {
       payload,
       defaultTimeoutMs: defaultTimeoutMsFor(point, 'command', opts.defaultTimeoutMs),
-      ...(opts.hookEnv !== undefined ? { env: opts.hookEnv } : {}),
+      ...(env !== undefined ? { env } : {}),
       ...(opts.workdir !== undefined ? { cwd: opts.workdir } : {}),
+      ...(sandboxPolicy !== undefined ? { sandboxPolicy } : {}),
       signal: opts.signal,
       trailingNewline: true,
       expectedEventName: opts.expectedEventName,

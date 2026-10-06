@@ -96,6 +96,8 @@ dsh plugin --profile <name> add dsh-cc-loader dsh-cc-hooks
 | `homeDir` | `os.homedir()` | 家目录覆盖(测试用) |
 | `projectRootMarkers` | `['.git', '.claude']` | 项目根向上发现标记;`.claude` 让没有 git 仓库的项目也能定位到根 |
 | `projectDir` | 会话 cwd | `CLAUDE_PROJECT_DIR` 覆盖值 |
+| `sandboxMode` | `''` | hook 的沙箱模式。空 = 跟随会话;`danger-full-access` = 不设防(Claude Code 行为) |
+| `shellDialect` | `auto` | `ctx.shell` 说的是哪种语言:`auto` 在 Windows 上探一次 / `posix` / `pwsh` |
 
 ## hooks.json 格式速查(CC 官方格式,直传 JSON)
 

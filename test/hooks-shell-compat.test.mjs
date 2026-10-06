@@ -16,7 +16,12 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { runShellHook } from '../packages/cc-hooks/src/shell-compat.js'
+import {
+  applyCallOperator,
+  needsCallOperator,
+  probeShellDialect,
+  runShellHook,
+} from '../packages/cc-hooks/src/shell-compat.js'
 
 const NOW = () => 1000
 
@@ -126,4 +131,66 @@ test('cwd and env pass through as workdir/env; absent ones stay absent', async (
   await runShellHook(bare.shell, HOOK, { payload: {}, defaultTimeoutMs: 1 }, NOW)
   assert.equal('workdir' in bare.seen[0], false)
   assert.equal('env' in bare.seen[0], false)
+})
+
+// ─── per-call sandbox policy ────────────────────────────────────────────────
+//
+// Without `sandboxPolicy` on the request the executor resolves the sandbox
+// against its own deployment root rather than the calling session's workspace,
+// which on Windows puts %TEMP% inside the workspace and the ACL runner refuses
+// the hook before it spawns.
+
+test('sandboxPolicy reaches the host request; absent stays absent', async () => {
+  const policy = { mode: 'workspace-write', workspaceRoot: '/ws' }
+  const { shell, seen } = fakeShell('run')
+  await runShellHook(shell, HOOK, { ...OPTIONS, sandboxPolicy: policy }, NOW)
+  assert.deepEqual(seen[0].sandboxPolicy, policy)
+
+  const bare = fakeShell('run')
+  await runShellHook(bare.shell, HOOK, OPTIONS, NOW)
+  assert.equal('sandboxPolicy' in bare.seen[0], false)
+})
+
+// ─── shell dialect ──────────────────────────────────────────────────────────
+//
+// `ShellExecutor` exposes only `sandboxMode` — nothing names the shell — so the
+// dialect is probed. Only a command whose first token is quoted is read
+// differently by the two dialects, which is what keeps the probe off the
+// common path.
+
+test('needsCallOperator: only a leading quoted token can differ by dialect', () => {
+  assert.equal(needsCallOperator('"C:/Program Files/node/node.exe" x.mjs'), true)
+  assert.equal(needsCallOperator("  'quoted' x"), true)
+  assert.equal(needsCallOperator('node x.mjs'), false)
+  assert.equal(needsCallOperator('echo "later quote"'), false)
+  assert.equal(needsCallOperator('/usr/bin/node x.mjs'), false)
+})
+
+test('applyCallOperator: pwsh only, and only for a leading quoted token', () => {
+  const quoted = '"C:/Program Files/nodejs/node.exe" script.mjs'
+  assert.equal(applyCallOperator(quoted, 'pwsh'), `& ${quoted}`)
+  // POSIX shells parse `& "cmd"` as a syntax error, so it is never added.
+  assert.equal(applyCallOperator(quoted, 'posix'), quoted)
+  assert.equal(applyCallOperator(quoted, undefined), quoted)
+  assert.equal(applyCallOperator('node script.mjs', 'pwsh'), 'node script.mjs')
+})
+
+test('probeShellDialect: an expanded $BASH_VERSION means POSIX; empty means pwsh', async () => {
+  const posix = fakeShell('run', { exitCode: 0, stdout: { text: '5.2.15(1)-release\n' }, stderr: { text: '' } })
+  assert.equal(await probeShellDialect(posix.shell), 'posix')
+
+  const pwsh = fakeShell('run', { exitCode: 0, stdout: { text: '\n' }, stderr: { text: '' } })
+  assert.equal(await probeShellDialect(pwsh.shell), 'pwsh')
+
+  // A probe that cannot run reports undefined so callers fall back to the
+  // platform default instead of guessing.
+  const broken = { resolve: () => { throw new Error('no executor') } }
+  assert.equal(await probeShellDialect(broken), undefined)
+})
+
+test('probeShellDialect forwards a resolved policy so a confined host can run it', async () => {
+  const { shell, seen } = fakeShell('run', { exitCode: 0, stdout: { text: 'x' }, stderr: { text: '' } })
+  const policy = { mode: 'read-only', workspaceRoot: '/ws' }
+  await probeShellDialect(shell, { sandboxPolicy: policy })
+  assert.deepEqual(seen[0].sandboxPolicy, policy)
 })
