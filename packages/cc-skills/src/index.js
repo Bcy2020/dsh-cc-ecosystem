@@ -20,7 +20,7 @@ export const name = 'cc-skills'
 export const inject = ['skills']
 
 export const Config = z.object({
-  projectRootMarkers: z.array(z.string()).default(['.git']),
+  projectRootMarkers: z.array(z.string()).default(['.git', '.claude']),
   // 150: between project-dsh (100) and project-agents (200). DSH-native skills
   // win over Claude skills; Claude skills win over user-level.
   skillRank: z.number().default(150),

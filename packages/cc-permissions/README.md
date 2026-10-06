@@ -70,7 +70,7 @@ dsh plugin --profile <name> add dsh-cc-permissions
 | `enableDefaultMode` | `true` | `defaultMode=dontAsk` → approval policy `never` |
 | `autoApproveAllowed` | `true` | `allow` rules auto-answer `approval/request` (incl. sandbox escalation) |
 | `homeDir` | `<home>` | Home dir for `~/.claude/settings.json` |
-| `projectRootMarkers` | `['.git']` | Project root discovery |
+| `projectRootMarkers` | `['.git', '.claude']` | Project root discovery; `.claude` resolves projects without a `.git` repo. The user's home is never a root |
 
 ## License
 

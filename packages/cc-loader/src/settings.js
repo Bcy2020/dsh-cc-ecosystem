@@ -16,14 +16,15 @@ import { findProjectRoot, findClaudeProjectRoot, pathExists, readTextSafe } from
  * @param {string} cwd
  * @param {{ homeDir?: string, projectRootMarkers?: string[] }} [opts]
  *   projectRootMarkers: explicit markers use findProjectRoot; otherwise CC
- *   semantics (closest .claude/ directory, .git fallback, home excluded).
+ *   semantics (closest .claude/ directory, .git fallback). Home is excluded
+ *   either way.
  * @returns {Promise<{ projectRoot?: string, user?: Source, project?: Source, local?: Source }>}
  *   Source = { scope, path, data } or undefined when absent/unreadable.
  */
 export async function discoverSettings(cwd, opts = {}) {
   const homeDir = opts.homeDir ?? homedir()
   const projectRoot = opts.projectRootMarkers !== undefined
-    ? await findProjectRoot(cwd, opts.projectRootMarkers)
+    ? await findProjectRoot(cwd, opts.projectRootMarkers, { homeDir })
     : await findClaudeProjectRoot(cwd, { homeDir })
   const userPath = join(homeDir, '.claude', 'settings.json')
   const out = {}

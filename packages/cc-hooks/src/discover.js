@@ -35,7 +35,7 @@ import { findProjectRoot, pathExists, readTextSafe } from 'dsh-cc-loader'
  * @param {string} cwd - session workspace.
  * @param {object} [opts]
  * @param {string} [opts.homeDir] - default os.homedir().
- * @param {string[]} [opts.projectRootMarkers] - default ['.git'].
+ * @param {string[]} [opts.projectRootMarkers] - default ['.git', '.claude'].
  * @param {string[]} [opts.pluginDirs] - plugin roots scanned for
  *   `<dir>/hooks/hooks.json` (default []).
  * @param {boolean} [opts.enableGlobal] - include the user-level sources
@@ -55,7 +55,7 @@ export async function discoverHookFiles(cwd, opts = {}) {
     if (userHooks !== undefined) sources.push(userHooks)
   }
 
-  const projectRoot = await findProjectRoot(cwd, opts.projectRootMarkers)
+  const projectRoot = await findProjectRoot(cwd, opts.projectRootMarkers, { homeDir })
   if (projectRoot !== undefined) {
     const projectSettings = await readSource('project', join(projectRoot, '.claude', 'settings.json'), { requireHooksKey: true })
     if (projectSettings !== undefined) sources.push(projectSettings)

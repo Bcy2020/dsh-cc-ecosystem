@@ -22,7 +22,7 @@ import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { apply, Config } from '../src/index.js'
 
 const RULES_TEXT = 'Always run the linter before committing.'
@@ -166,6 +166,60 @@ test('a 0.1.5-shaped session with out-of-range surface nodes never throws', asyn
     const agent = { session: fakeSession(cwd, [], [0, 7, 96], 'new') }
     const decision = await preStep(ctx, agent)
     assert.ok(injectedRules(decision) !== undefined, 'rules injected, no throw')
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+// ─── rules discovery (issue #11) ────────────────────────────────────────────
+//
+// Rule packs organize rules in folders, and a project can carry a `.claude/`
+// without being a git repo. Both used to make the rules section inject nothing.
+
+/** A temp project with an arbitrary `.claude/` tree; `git` adds a `.git` marker. */
+async function project(files, { git }) {
+  const dir = await mkdtemp(join(tmpdir(), 'cc-rules-disc-'))
+  await mkdir(join(dir, '.claude'), { recursive: true })
+  for (const [rel, text] of Object.entries(files)) {
+    const path = join(dir, '.claude', rel)
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, text)
+  }
+  if (git) await writeFile(join(dir, '.git'), '')
+  return dir
+}
+
+async function injectedText(cwd) {
+  const ctx = new Context()
+  ctx.provide('skills', stubSkills())
+  apply(ctx, Config({ homeDir: join(tmpdir(), 'cc-rules-nohome') }))
+  const agent = { session: fakeSession(cwd, [], [], 'new') }
+  const rules = injectedRules(await preStep(ctx, agent))
+  assert.ok(rules !== undefined, 'the rules message must be injected')
+  return rules.content.map((b) => b.text ?? '').join('')
+}
+
+test('rules nested in subfolders are injected', async () => {
+  const cwd = await project({
+    'rules/common/style.md': 'Use two-space indents.',
+    'rules/typescript/typing.md': 'Never use `any`.',
+  }, { git: true })
+  try {
+    const text = await injectedText(cwd)
+    assert.match(text, /Use two-space indents\./)
+    assert.match(text, /Never use `any`\./)
+    // The relative path keeps two same-named rules apart in the headings.
+    assert.match(text, /## common\/style\.md/)
+    assert.match(text, /## typescript\/typing\.md/)
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+test('a .claude-only project (no git repo) still injects its rules', async () => {
+  const cwd = await project({ 'rules/team.md': 'Always run the linter.' }, { git: false })
+  try {
+    assert.match(await injectedText(cwd), /Always run the linter\./)
   } finally {
     await rm(cwd, { recursive: true, force: true })
   }

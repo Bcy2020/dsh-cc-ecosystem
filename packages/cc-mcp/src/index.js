@@ -23,6 +23,7 @@
 
 import { watchFile, unwatchFile } from 'node:fs'
 import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import Schema from '@deepseek-ai/schemastery'
 import { findProjectRoot, discoverProjectMcp, discoverPluginRoot } from 'dsh-cc-loader'
@@ -959,7 +960,10 @@ async function wireAgent(ctx, agent, config) {
     return
   }
   const state = createController(ctx, agent, agentCtx, cwd, config)
-  const projectRoot = config.enableProject ? await findProjectRoot(cwd, config.projectRootMarkers) : undefined
+  // home is excluded: `~/.claude` is Claude Code's global dir, not a project.
+  const projectRoot = config.enableProject
+    ? await findProjectRoot(cwd, config.projectRootMarkers, { homeDir: homedir() })
+    : undefined
   state.projectRoot = projectRoot
   agentStates.set(agent.id, state)
   attachWatcher(state)

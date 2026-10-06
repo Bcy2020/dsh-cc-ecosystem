@@ -7,6 +7,11 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 import { findProjectRoot, findClaudeProjectRoot } from '../packages/cc-loader/src/skills.js'
+import { Config as SkillsConfig } from '../packages/cc-skills/src/index.js'
+import { Config as AgentsConfig } from '../packages/cc-agents/src/index.js'
+import { Config as PermissionsConfig } from '../packages/cc-permissions/src/index.js'
+import { Config as HooksConfig } from '../packages/cc-hooks/src/index.js'
+import { Config as McpConfig } from '../packages/cc-mcp/src/index.js'
 
 function tmpTree() {
   const dir = mkdtempSync(join(tmpdir(), 'cc-root-'))
@@ -110,3 +115,61 @@ test('findClaudeProjectRoot: cwd directly in home resolves undefined', async () 
     assert.equal(await findClaudeProjectRoot(home, { homeDir: home, stopAt: dir }), undefined)
   } finally { cleanup() }
 })
+
+// ─── `.claude` as a default marker, with the home guard ────────────────────
+//
+// Claude Code resolves project settings at the nearest `.claude/`, so a project
+// without a git repo must still have a root.
+
+test('findProjectRoot: .claude is a default marker (no .git anywhere)', async () => {
+  const { dir, cleanup } = tmpTree()
+  try {
+    mkdirSync(join(dir, 'proj', 'src'), { recursive: true })
+    mkdirSync(join(dir, 'proj', '.claude'))
+    assert.equal(await findProjectRoot(join(dir, 'proj', 'src')), join(dir, 'proj'))
+  } finally { cleanup() }
+})
+
+test('findProjectRoot: home is never a project root', async () => {
+  const { dir, cleanup } = tmpTree()
+  try {
+    // A simulated home carrying `~/.claude` and a session in a plain
+    // subdirectory of it. Without the guard the walk matches the home's
+    // `.claude` and loads Claude Code's *global* config as a project's.
+    const home = join(dir, 'home')
+    mkdirSync(join(home, '.claude'), { recursive: true })
+    mkdirSync(join(home, 'scratch'), { recursive: true })
+    const cwd = join(home, 'scratch')
+
+    assert.equal(
+      await findProjectRoot(cwd, ['.git', '.claude']),
+      home,
+      'without homeDir the walk does match home — this is the case the guard exists for',
+    )
+    assert.notEqual(
+      await findProjectRoot(cwd, ['.git', '.claude'], { homeDir: home }),
+      home,
+      'with homeDir the walk must skip home and keep going',
+    )
+  } finally { cleanup() }
+})
+
+// ─── every cc-* package must accept `.claude` as a root marker ─────────────
+//
+// The marker list is per-package config, so a package can drift. Each one must
+// carry both `.git` and `.claude` (cc-mcp adds `.dsh`; extras are fine).
+
+for (const [name, Config] of [
+  ['cc-skills', SkillsConfig],
+  ['cc-agents', AgentsConfig],
+  ['cc-permissions', PermissionsConfig],
+  ['cc-hooks', HooksConfig],
+  ['cc-mcp', McpConfig],
+]) {
+  test(`${name}: projectRootMarkers default carries .git and .claude`, () => {
+    const markers = Config({}).projectRootMarkers
+    assert.ok(Array.isArray(markers), `${name}: projectRootMarkers must be an array`)
+    assert.ok(markers.includes('.git'), `${name}: ${JSON.stringify(markers)} lacks .git`)
+    assert.ok(markers.includes('.claude'), `${name}: ${JSON.stringify(markers)} lacks .claude`)
+  })
+}
