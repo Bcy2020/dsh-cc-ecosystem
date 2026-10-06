@@ -57,9 +57,13 @@ semantics, so cross-tool permission sync is intentionally out of scope
 
 ## Install
 
+The version is pinned deliberately: pnpm 11 withholds releases younger than 24 h, so a bare package name silently installs an older one and still reports success. See [why the version is pinned](../../README.md#为什么要带版本号).
+
+<!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-permissions
+dsh plugin --profile <name> add dsh-cc-permissions@0.4.4
 ```
+<!-- versions:end -->
 
 ## Config
 

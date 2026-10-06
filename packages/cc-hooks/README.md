@@ -66,10 +66,13 @@ process.exit(0)
 
 ## 安装
 
+先装共享库,再装插件(本地开发 checkout 需包内 `pnpm install` + `pnpm link ../cc-loader`)。版本号是**故意钉死**的:pnpm 11 会拦下发布不满 24 小时的版本,只写包名会静默装到旧版并报成功 —— 见[为什么要带版本号](../../README.md#为什么要带版本号)。
+
+<!-- versions:begin -->
 ```sh
-# 先装共享库,再装插件(本地开发 checkout 需包内 pnpm install + pnpm link ../cc-loader)
-dsh plugin --profile <name> add dsh-cc-loader dsh-cc-hooks
+dsh plugin --profile <name> add dsh-cc-loader@0.3.4 dsh-cc-hooks@0.3.4
 ```
+<!-- versions:end -->
 
 本地 patch 挂载(Web profile 热更新,改完重启 GUI):
 

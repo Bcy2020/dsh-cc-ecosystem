@@ -20,4 +20,10 @@ for (const pkg of readdirSync('packages')) {
   }
 }
 console.log(`syntax check: ${total - failed}/${total} files OK`)
-process.exit(failed > 0 ? 1 : 0)
+
+// The README install snippets pin exact versions (pnpm 11 withholds a release
+// younger than 24h, so a bare name installs an older one). A release that bumps
+// the packages without refreshing them ships a command that installs the wrong
+// version — and the 24h rule means nobody would notice for a day.
+const snippets = spawnSync(process.execPath, [join('scripts', 'sync-readme-versions.mjs'), '--check'], { stdio: 'inherit' })
+process.exit(failed > 0 || snippets.status !== 0 ? 1 : 0)

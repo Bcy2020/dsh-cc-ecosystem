@@ -27,9 +27,13 @@ lower ranks win duplicate names in DSH).
 
 ## Install
 
+The version is pinned deliberately: pnpm 11 withholds releases younger than 24 h, so a bare package name silently installs an older one and still reports success. See [why the version is pinned](../../README.md#为什么要带版本号).
+
+<!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-skills
+dsh plugin --profile <name> add dsh-cc-skills@0.3.4
 ```
+<!-- versions:end -->
 
 ## Config
 

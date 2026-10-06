@@ -4,11 +4,13 @@ One install brings the whole [dsh-cc](https://github.com/Bcy2020/dsh-cc-ecosyste
 
 把整个 dsh-cc 生态装进一个 DSH profile:共享解析层 + 五个 Claude Code 适配器,由**一个 profile 层**全部挂载。
 
-```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem
-```
+版本号是**故意钉死**的:pnpm 11 会拦下发布不满 24 小时的版本,只写包名会静默装到旧版并报成功 —— 见[为什么要带版本号](../../README.md#为什么要带版本号)。Web GUI 里把下面这行 `包名@版本号` 原样填进输入框即可。
 
-Web GUI 里粘贴包名同样有效。
+<!-- versions:begin -->
+```sh
+dsh plugin --profile <name> add dsh-cc-ecosystem@0.3.4
+```
+<!-- versions:end -->
 
 ## 它挂载什么
 

@@ -63,9 +63,13 @@ Project `.claude/agents/` beats global `~/.claude/agents/` on name clashes
 
 ## Install
 
+The version is pinned deliberately: pnpm 11 withholds releases younger than 24 h, so a bare package name silently installs an older one and still reports success. See [why the version is pinned](../../README.md#为什么要带版本号).
+
+<!-- versions:begin -->
 ```sh
-dsh plugin --profile <p> add dsh-cc-agents
+dsh plugin --profile <name> add dsh-cc-agents@0.3.4
 ```
+<!-- versions:end -->
 
 Dev checkout (hot user layer, `file:///` required on Windows):
 
