@@ -9,6 +9,24 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.3.4 — 规则子目录、`.claude` 作为项目根标记、hook 的 shell 边界
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.3.4**,
+`cc-permissions` **0.4.4**。改动集中在 `dsh-cc-loader`(规则读取与项目根发现)和 `dsh-cc-hooks`(shell 边界)。
+
+- **规则子目录现在会被读取**([#11]) —— `discoverRules` 只看顶层 `.md`,而规则包常按目录组织(`rules/common/`、`rules/typescript/`)。这类项目拿到的是**零条规则**,注入函数等于没被调用,而且**一声不响**:没有报错、没有日志、加载照常成功。现在整棵树都走,跳过隐藏目录与 `node_modules`。
+  一处偏离报告方案的取法:`name` 用**相对规则目录的路径**,而不是裸文件名 —— 报告人自己举的例子就是 `common/style.md` 与 `typescript/style.md` 同名,裸文件名会让两条规则在排序键上相撞、并在注入文本里渲染成两个一模一样的 `## style.md` 标题。顶层文件的相对路径**就是**它的文件名,所以扁平规则目录的输出与之前逐字节相同。
+- **`.claude` 成为默认项目根标记**([#11]) —— `projectRootMarkers` 默认只有 `['.git']`,于是「有 `.claude/`、没有 git 仓库」的项目根本解析不出项目根。Claude Code 是按**最近的 `.claude/`** 找项目设置的,现在 cc-skills / cc-agents / cc-permissions / cc-hooks 的默认值都是 `['.git', '.claude']`(cc-mcp 本来就有,`loadClaude` / `discoverSettings` 的默认路径本来也走 CC 语义,这一版是把传了显式标记的那条路对齐)。
+- **`findProjectRoot` 现在排除家目录** —— 报告里没提,但不补上就是我拿标记换来的**新**缺陷:`findProjectRoot` 历来不做家目录排除(`findClaudeProjectRoot` 做了,并且写明了原因),一旦 `.claude` 成为标记,**不在任何项目里**的会话会一路走上去命中 `~/.claude` —— 那是 Claude Code 的**全局**配置目录 —— 于是把全局技能、规则、设置**再当项目级加载一遍**(而且带着项目级的 rank)。它现在接受 `{ homeDir }` 并跳过该目录,五个包都把家目录传了进去(cc-mcp 也传),同一个 cwd 在整个家族里解析出同一个根。
+- **Windows 上 command hook 的三处失效**([#10]):
+  - hook 的 shell 请求**不带调用会话的沙箱策略** → 执行器拿自己的部署根去解沙箱,Windows 的 ACL 运行器直接拒绝这个 hook。现在按会话解析后随请求传递;新增 `sandboxMode` 配置可覆盖(空 = 跟随会话)。
+  - `ctx.shell` 在 Windows 上是 PowerShell,而 hook 命令是照 bash 写的 —— 首 token 是带引号的路径时(`"C:/Program Files/nodejs/node.exe" x.mjs`),bash 读作调用,pwsh 读作字符串表达式并**语法报错**。`ShellExecutor` 不暴露自己是哪一种,所以探一次并缓存;**探针只在命令首字符是引号时才跑**,其余命令零开销。新增 `shellDialect` 配置(`auto` / `posix` / `pwsh`)。挂载了把 `ctx.shell` 换成 Git Bash 的插件时,探针会报 POSIX,命令原样交给那个 bash,不需要任何配置。
+  - `CLAUDE_PLUGIN_ROOT` 只被替换进命令文本,**没有导出为环境变量** —— 真正去读这个变量的插件 hook 拿到空值。现在与 `CLAUDE_PROJECT_DIR` 一起导出。
+- **测试**:全仓库 **356 例**。此前 `test/project-root.test.mjs`、`packages/cc-loader/test/frontmatter-lenient.test.mjs`、`test/hooks-executors.test.mjs` **没有被 `npm test` 登记**,一直不在 CI 里跑 —— 已补上(少了这一步,本次新增的 11 例根发现测试会全部静默地不执行)。新增用例做了**变异验证**:把 `discoverRules` 和根标记退回旧行为,8 例转红。另外把 `test/hooks-shell-context.test.mjs` 里「固定睡 300ms 再断言 hook 已执行」改成**等条件成立**:SessionStart hook 是分离执行的,机器一忙就抖,实测同一个文件每轮挂的断言都不一样。
+
+[#10]: https://github.com/Bcy2020/dsh-cc-ecosystem/issues/10
+[#11]: https://github.com/Bcy2020/dsh-cc-ecosystem/issues/11
+
 ## v0.3.3 — 非严格 YAML frontmatter 不再被丢弃
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.3.3**,
