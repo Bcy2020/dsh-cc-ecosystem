@@ -16,6 +16,22 @@ import { apply } from '../packages/cc-hooks/src/index.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * cc-hooks runs SessionStart hooks detached, so a test has to wait for the
+ * shell to be reached rather than sleep a fixed amount: 300 ms was not always
+ * enough on a loaded machine and this file flaked with a different assertion
+ * each run. Poll the condition instead, and fail loudly on the deadline rather
+ * than asserting on a request that never arrived.
+ */
+async function waitFor(predicate, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() >= deadline) return false
+    await sleep(20)
+  }
+  return true
+}
+
 function makeProject(hooksMap) {
   const project = mkdtempSync(join(tmpdir(), 'cc-hooks-shellctx-'))
   mkdirSync(join(project, '.git'), { recursive: true })
@@ -63,8 +79,11 @@ function makeAgent(cwd) {
   return { session: { header: { id: 'sess-1', cwd }, events: [], append: () => {} } }
 }
 
-/** Apply the plugin, fire SessionStart, and return the ctx for inspection. */
-async function runSessionStart(hooksMap, { config = {}, policy } = {}) {
+/**
+ * Apply the plugin, fire SessionStart, and return the ctx for inspection once
+ * `ready` holds (by default: at least one hook reached the shell).
+ */
+async function runSessionStart(hooksMap, { config = {}, policy, ready = (ctx) => ctx._requests.length > 0 } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'cc-hooks-home-'))
   const project = makeProject(hooksMap)
   const ctx = makeCtx(policy)
@@ -76,7 +95,8 @@ async function runSessionStart(hooksMap, { config = {}, policy } = {}) {
     ...config,
   })
   await ctx._listeners['agent/session-start']({ agent: makeAgent(project), source: 'startup' })
-  await sleep(300)
+  const reached = await waitFor(() => ready(ctx))
+  assert.ok(reached, 'the hook reached the shell before the deadline')
   return { ctx, project, home }
 }
 
