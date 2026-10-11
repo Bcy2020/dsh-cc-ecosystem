@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, parse } from 'node:path'
+import { dirname, join, parse, resolve, sep } from 'node:path'
 import {
   findGitRoot, boundedAncestors, fullAncestors, claudeJsonProjectKey,
   readClaudeJsonScopes, settingsPaths,
@@ -175,18 +175,35 @@ test('every discovered entry carries the scope it came from', async () => {
 
 // ─── ~/.claude.json ──────────────────────────────────────────────────────────
 
-test('claudeJsonProjectKey: git root with forward slashes', () => {
-  assert.equal(
-    claudeJsonProjectKey('C:\\work\\repo\\pkg', 'C:\\work\\repo'),
-    'C:/work/repo',
-  )
+// The key is a forward-slash path. These two build their inputs with the
+// platform's own path primitives, so they assert the same thing on both CI legs
+// — which of the two directories is chosen, and that no backslash survives. The
+// exact Windows spelling is pinned separately, below, because it is the one
+// `~/.claude.json` on a Windows machine actually contains.
+
+/** The forward-slash form the key is supposed to be. */
+const slashKey = (path) => resolve(path).replaceAll('\\', '/')
+
+test('claudeJsonProjectKey: the git root, forward-slashed', () => {
+  const repo = join('work', 'repo')
+  const key = claudeJsonProjectKey(join(repo, 'pkg'), repo)
+  assert.equal(key, slashKey(repo))
+  assert.ok(!key.includes('\\'), 'the key must not carry backslashes')
+  assert.ok(!key.endsWith(`${sep}pkg`), 'the key is the root, not the session directory')
 })
 
 test('claudeJsonProjectKey: outside a repository the key is the PARENT of cwd', () => {
-  assert.equal(
-    claudeJsonProjectKey('C:\\work\\scratch\\here', undefined),
-    'C:/work/scratch',
-  )
+  const here = join('work', 'scratch', 'here')
+  const key = claudeJsonProjectKey(here, undefined)
+  assert.equal(key, slashKey(dirname(here)))
+  assert.ok(!key.endsWith(`${sep}here`), 'the key is the parent, not the directory itself')
+})
+
+test('claudeJsonProjectKey: the spelling a Windows ~/.claude.json actually holds', {
+  skip: process.platform !== 'win32' ? 'windows-only path grammar' : false,
+}, () => {
+  assert.equal(claudeJsonProjectKey('C:\\work\\repo\\pkg', 'C:\\work\\repo'), 'C:/work/repo')
+  assert.equal(claudeJsonProjectKey('C:\\work\\scratch\\here', undefined), 'C:/work/scratch')
 })
 
 test('readClaudeJsonScopes: user from the top level, local from projects[<key>]', async () => {
