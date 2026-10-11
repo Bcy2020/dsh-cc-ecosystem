@@ -1,10 +1,21 @@
-// .claude directory discovery: skills, commands, rules, settings.json.
-// Extracted from dsh-claude-compat's provider (MIT, biedongbin) and generalized
-// to multiple roots (project + global) with a shared IR shape.
+// `.claude` asset discovery: skills, commands, rules.
+//
+// Scope resolution lives in scopes.js — nothing here decides *which*
+// directories to read. This module reads one directory it is handed and tags
+// every entry with where it came from:
+//   source   — the scope kind ('project-claude' | 'user-claude' | 'plugin')
+//   baseDir  — the `.claude` directory (or plugin root) that contributed it
+// There is no `rank`: Claude Code has no numeric priority, so the position of
+// an entry in the merged list *is* its priority.
+//
+// Extracted from dsh-claude-compat's provider (MIT, biedongbin).
 
-import { readdir, stat, readFile } from 'node:fs/promises'
-import { join, dirname, resolve } from 'node:path'
+import { readdir } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { parse } from 'yaml'
+import { pathExists, readTextSafe } from './scopes.js'
+
+export { pathExists, readTextSafe }
 
 /** DSH skill-name grammar (kebab-case), same as @deepseek-ai/dsh-skill. */
 const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -13,107 +24,22 @@ export function isSkillName(name) {
 }
 
 /**
- * Walk up from `cwd` to the closest ancestor carrying one of `markers`.
- *
- * `.claude` is a default marker because Claude Code treats the nearest
- * `.claude/` directory as the project configuration root — a project without a
- * git repo still has a root.
- *
- * `opts.homeDir` is never itself a project root. Without the guard, a session
- * outside any project walks up into the home directory, matches `~/.claude`
- * (Claude Code's *global* config dir) and loads global skills and rules a
- * second time as project-scoped ones. `findClaudeProjectRoot` excludes home for
- * the same reason.
- *
- * @param {string} cwd - session working directory.
- * @param {string[]} [markers] - directory names marking a project root.
- * @param {{ homeDir?: string }} [opts] - directory excluded from the walk.
- * @returns {Promise<string | undefined>} project root directory.
- */
-export async function findProjectRoot(cwd, markers = ['.git', '.claude'], opts = {}) {
-  const homeDir = opts.homeDir
-  let current = resolve(cwd)
-  while (true) {
-    if (homeDir === undefined || current !== homeDir) {
-      for (const marker of markers) {
-        if (await pathExists(join(current, marker))) return current
-      }
-    }
-    const parent = dirname(current)
-    if (parent === current) return undefined
-    current = parent
-  }
-}
-
-/**
- * Claude Code project-root discovery: the closest directory containing a
- * `.claude/` directory IS the project configuration root — Claude Code walks
- * up from the cwd looking for a `.claude/` directory (confirmed by
- * anthropics/claude-code#80791: "Claude Code discovers project-level settings
- * by walking up from the current working directory looking for a .claude/
- * directory"), NOT the git root.
- *
- * Fallback: when no `.claude/` exists on the walk, fall back to the closest
- * `.git` root (compat: repositories without a `.claude/` still resolve).
- *
- * Home-directory guard: `~/.claude` (Claude Code's global config dir) and a
- * git-backed home are NEVER treated as a project root — the walk stops at
- * home. Without the guard, every session outside a project would resolve its
- * root to the user's home directory.
- *
- * @param {string} cwd - session working directory.
- * @param {object} [opts] - { homeDir } excluded from root resolution;
- *   { stopAt } optional upper walk boundary (directory at or above which the
- *   walk stops — primarily a test seam so walk-top markers on the real
- *   machine cannot interfere; callers normally leave it unset).
- * @returns {Promise<string | undefined>} project root directory.
- */
-export async function findClaudeProjectRoot(cwd, opts = {}) {
-  const homeDir = opts.homeDir
-  const stopAt = opts.stopAt
-  const isHome = (dir) => homeDir !== undefined && dir === homeDir
-  const atStop = (dir) => stopAt !== undefined && dir === stopAt
-  // 1. Closest .claude/ directory (CC project-scope semantics), home excluded.
-  let current = resolve(cwd)
-  while (true) {
-    if (!isHome(current) && !atStop(current) && await pathExists(join(current, '.claude'))) return current
-    const parent = dirname(current)
-    if (parent === current || atStop(current)) break
-    current = parent
-  }
-  // 2. Fallback: closest .git root, home excluded.
-  current = resolve(cwd)
-  while (true) {
-    if (!isHome(current) && !atStop(current) && await pathExists(join(current, '.git'))) return current
-    const parent = dirname(current)
-    if (parent === current || atStop(current)) return undefined
-    current = parent
-  }
-}
-
-export async function pathExists(path) {
-  try { await stat(path); return true } catch { return false }
-}
-
-export async function readTextSafe(path) {
-  try { return await readFile(path, { encoding: 'utf8' }) } catch { return undefined }
-}
-
-/**
- * Collect skills + commands from one `.claude` dir into `out` (project or
- * global). Each entry carries its IR status; unsupported entries are filtered.
- * @param {string[]} [warnings] - collector, shared with the callers that have
- *   their own warnings to report (load.js). Omit to get a fresh array back.
+ * Collect skills + commands from one `.claude` dir.
+ * @param {string} claudeDir
+ * @param {{ source: string, warnings?: string[] }} opts - `source` is the scope
+ *   kind; the dir itself becomes each entry's `baseDir`.
  * @returns {Promise<{skills: object[], commands: object[], warnings: string[]}>}
  */
-export async function collectClaudeDir(claudeDir, source, rank, warnings = []) {
-  const skills = await discoverSkills(join(claudeDir, 'skills'), source, rank, warnings)
-  const commands = await discoverCommands(join(claudeDir, 'commands'), source, rank, warnings)
+export async function collectClaudeDir(claudeDir, opts = {}) {
+  const warnings = opts.warnings ?? []
+  const source = opts.source
+  const skills = await discoverSkills(join(claudeDir, 'skills'), { source, baseDir: claudeDir, warnings })
+  const commands = await discoverCommands(join(claudeDir, 'commands'), { source, baseDir: claudeDir, warnings })
   return { skills, commands, warnings }
 }
 
 /**
- * Rules from `.claude/rules` — plain markdown, ordered by relative path.
+ * Rules from one `.claude/rules` tree — plain markdown, ordered by relative path.
  *
  * The whole tree is walked. Rule packs commonly organize rules in folders
  * (`rules/common/`, `rules/typescript/` …); a top-level-only read yields zero
@@ -122,10 +48,11 @@ export async function collectClaudeDir(claudeDir, source, rank, warnings = []) {
  * just its filename.
  *
  * @param {string} rulesDir
- * @param {string} scope - 'project' | 'user'.
+ * @param {{ source: string, baseDir?: string }} opts
  * @returns {Promise<object[]>} rule IR entries.
  */
-export async function discoverRules(rulesDir, scope) {
+export async function discoverRules(rulesDir, opts = {}) {
+  const { source, baseDir } = opts
   const rules = []
   await walk(rulesDir, '')
   rules.sort((a, b) => a.name.localeCompare(b.name))
@@ -144,7 +71,8 @@ export async function discoverRules(rulesDir, scope) {
         rules.push({
           path: join(dir, entry.name),
           name,
-          scope,
+          source,
+          baseDir,
           status: 'DIRECT',
         })
       }
@@ -154,7 +82,8 @@ export async function discoverRules(rulesDir, scope) {
 
 // ─── skills: recursive, ≤3 levels, bundle stops descent ─────────────────────
 
-export async function discoverSkills(rootDir, source, rank, warnings = []) {
+export async function discoverSkills(rootDir, opts = {}) {
+  const { source, baseDir, warnings = [] } = opts
   const out = []
   if (!(await pathExists(rootDir))) return out
   await walk(rootDir, '', 0)
@@ -166,7 +95,7 @@ export async function discoverSkills(rootDir, source, rank, warnings = []) {
     catch { return }
     if (entries.some((e) => e.isFile() && e.name === 'SKILL.md')) {
       const skillPath = join(dir, 'SKILL.md')
-      const c = await parseSkillCandidateFile(skillPath, source, rank, prefix || undefined, warnings)
+      const c = await parseSkillCandidateFile(skillPath, { source, baseDir, flatName: prefix || undefined, warnings })
       if (c !== undefined) out.push(c)
       return // bundle — don't descend
     }
@@ -182,7 +111,8 @@ export async function discoverSkills(rootDir, source, rank, warnings = []) {
 
 // ─── commands: flat ──────────────────────────────────────────────────────────
 
-export async function discoverCommands(rootDir, source, rank, warnings = []) {
+export async function discoverCommands(rootDir, opts = {}) {
+  const { source, baseDir, warnings = [] } = opts
   const out = []
   if (!(await pathExists(rootDir))) return out
   let entries
@@ -210,7 +140,7 @@ export async function discoverCommands(rootDir, source, rank, warnings = []) {
       whenToUse: undefined,
       invocation: { modelInvocable: true, userInvocable: true },
       source,
-      rank,
+      baseDir,
       locator: { path, directory: rootDir },
       resourceBase: { kind: 'directory', path: rootDir },
       frontmatter: parsed?.data ?? null,
@@ -224,7 +154,8 @@ export async function discoverCommands(rootDir, source, rank, warnings = []) {
 
 // ─── SKILL.md candidate parsing ──────────────────────────────────────────────
 
-async function parseSkillCandidateFile(path, source, rank, flatName, warnings = []) {
+async function parseSkillCandidateFile(path, opts) {
+  const { source, baseDir, flatName, warnings = [] } = opts
   const raw = await readTextSafe(path)
   if (raw === undefined) return undefined
   const parsed = parseFrontmatter(raw, warnings, `skill "${path}"`)
@@ -265,7 +196,7 @@ async function parseSkillCandidateFile(path, source, rank, flatName, warnings = 
     ...(whenToUse !== undefined ? { whenToUse } : {}),
     invocation,
     source,
-    rank,
+    baseDir,
     locator: { path, directory: dirname(path) },
     resourceBase: { kind: 'directory', path: dirname(path) },
     frontmatter: parsed.data,

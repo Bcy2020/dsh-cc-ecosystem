@@ -25,8 +25,10 @@ const FLAKY_SERVER = fileURLToPath(new URL('./mcp-flaky-server.mjs', import.meta
 
 // ─── pure projections ────────────────────────────────────────────────────────
 
-test('serverKey: project and plugin scopes never collide', () => {
+test('serverKey: each scope gets its own identity', () => {
   assert.equal(serverKey({ serverName: 'github' }), 'project:github')
+  assert.equal(serverKey({ serverName: 'github', scope: 'user' }), 'user:github')
+  assert.equal(serverKey({ serverName: 'github', scope: 'local' }), 'local:github')
   assert.equal(serverKey({ serverName: 'asana', pluginName: 'asana' }), 'plugin:asana:asana')
 })
 
@@ -53,6 +55,10 @@ test('serverEntry: projects a live record into the panel row shape', () => {
     serverName: 'echo',
     pluginName: null,
     scope: 'project',
+    declaredIn: null,
+    sourcePath: 'C:/p/.mcp.json',
+    pluginPath: null,
+    pluginSource: null,
     transport: 'stdio',
     source: 'C:/p/.mcp.json',
     status: 'ready',
@@ -66,6 +72,19 @@ test('serverEntry: projects a live record into the panel row shape', () => {
     error: null,
     updatedAt: 42,
   })
+})
+
+test('serverEntry: provenance fields survive from the loader entry', () => {
+  const entry = serverEntry({
+    key: 'user:github',
+    // What discoverMcpScopes produces for a `~/.claude.json` user-scope server.
+    entry: { serverName: 'github', scope: 'user', transport: 'stdio', sourcePath: 'C:/Users/u/.claude.json' },
+    status: 'ready',
+    tools: [],
+  })
+  assert.equal(entry.scope, 'user')
+  assert.equal(entry.sourcePath, 'C:/Users/u/.claude.json')
+  assert.equal(entry.source, 'C:/Users/u/.claude.json')
 })
 
 test('serverEntry: host rows carry the host scope and their row id', () => {
@@ -141,19 +160,19 @@ test('rpcOk/rpcFail: Connection RPC envelopes', () => {
 
 test('formatTextReport: marks each status and carries the error', () => {
   const text = formatTextReport({
-    projectRoot: 'C:/p',
+    workspace: 'C:/p',
     servers: [
       { serverName: 'ok', scope: 'project', transport: 'stdio', status: 'ready', toolCount: 2, error: null },
       { serverName: 'bad', scope: 'project', transport: 'http', status: 'error', toolCount: 0, error: 'ECONNREFUSED' },
       { serverName: 'off', scope: 'plugin', transport: 'stdio', status: 'disabled', toolCount: 0, error: null },
     ],
   })
-  assert.match(text, /MCP servers \(3\) — C:\/p/)
+  assert.match(text, /MCP servers \(3\) — project 2, plugin 1 — workspace C:\/p/)
   assert.match(text, /✓ ok \[project\/stdio\] connected · 2 tool\(s\)/)
   assert.match(text, /✗ bad \[project\/http\] not connected/)
   assert.match(text, /ECONNREFUSED/)
   assert.match(text, /– off \[plugin\/stdio\] disabled/)
-  assert.match(formatTextReport({ projectRoot: null, servers: [] }), /no MCP server configured/)
+  assert.match(formatTextReport({ workspace: null, servers: [] }), /no MCP server configured/)
 })
 
 // ─── persisted enable/disable store ──────────────────────────────────────────
@@ -200,7 +219,7 @@ test('createDisabledStore: unreadable file warns and starts empty', async () => 
 
 /**
  * Drive the plugin's registered route the way the Web server does: a POST with
- * a JSON body, same-origin headers, and a captured response.
+ * a JSON body, the browser half's own headers, and a captured response.
  */
 async function invokeRoute(route, endpoint, payload, options = {}) {
   const body = typeof options.rawBody === 'string' ? options.rawBody : JSON.stringify(payload ?? {})
@@ -210,6 +229,7 @@ async function invokeRoute(route, endpoint, payload, options = {}) {
     headers: {
       host: options.host ?? '127.0.0.1:3080',
       origin: options.origin ?? 'http://127.0.0.1:3080',
+      'x-cc-mcp': '1',
       ...(options.headers ?? {}),
     },
     async *[Symbol.asyncIterator]() { yield Buffer.from(body) },
@@ -237,6 +257,10 @@ async function harness(servers, options = {}) {
   const pinnedStatePath = typeof options.statePath === 'string' ? options.statePath : null
   /** The file the plugin actually writes: pinned, else the workspace default. */
   const activeStatePath = () => pinnedStatePath ?? join(projectDir, '.dsh', 'cc-mcp-state.json')
+  // Discovery reads `~/.claude.json` (Claude Code's user + local MCP scopes).
+  // Point both at directories inside the fixture so a real one cannot leak in.
+  const homeDir = join(projectDir, 'no-such-home')
+  const claudeJsonPath = join(projectDir, 'no-such-claude.json')
 
   const ctx = new Context()
   const logs = []
@@ -287,6 +311,10 @@ async function harness(servers, options = {}) {
     watchProject: false,
     idleTimeoutMs: 10000,
     toolCallTimeoutMs: 15000,
+    // Hermetic scopes: this machine's real `~/.claude.json` holds MCP servers,
+    // and discovery reads it for the user/local scopes.
+    homeDir: homeDir,
+    claudeJsonPath: claudeJsonPath,
   }))
 
   const registered = new Map()
@@ -361,7 +389,7 @@ async function harness(servers, options = {}) {
     command: () => commandDefinition,
     state: () => JSON.parse(readFileSync(activeStatePath(), 'utf8')),
     stateFileExists: () => existsSync(activeStatePath()),
-    /** `<projectRoot>/.dsh/cc-mcp-state.json` when the default path is active. */
+    /** The session workspace's state file when the default path is active. */
     workspaceStatePath: () => join(projectDir, '.dsh', 'cc-mcp-state.json'),
     async cleanup() {
       ctx.emit('agent/disposed', { agent })
@@ -405,7 +433,7 @@ test('rpc state: reachable server is ready with its tools, and the check is clea
     const state = await h.rpc('state', { sessionId: 'session-1' })
     assert.equal(state.ok, true)
     assert.equal(state.value.known, true)
-    assert.equal(state.value.projectRoot, h.projectDir)
+    assert.equal(state.value.workspace, h.projectDir)
     assert.equal(state.value.servers.length, 1)
     const [server] = state.value.servers
     assert.equal(server.serverName, 'echo')
@@ -643,15 +671,30 @@ test('route: exposes diagnostics and answers GET without a body', async () => {
   } finally { await h.cleanup() }
 })
 
-test('route: refuses cross-origin POSTs and rejects malformed requests', async () => {
+test('route: only the panel’s own caller may POST, and malformed requests are rejected', async () => {
   const h = await harness({ echo: { command: process.execPath, args: [ECHO_SERVER] } })
   try {
+    // An ordinary web host: a browser sends Origin, so a cross-site one is
+    // refused outright.
     const crossOrigin = await h.send('state', { sessionId: 'session-1' }, { origin: 'http://evil.example' })
     assert.equal(crossOrigin.status, 403)
     assert.equal(crossOrigin.body.error.code, 'cc-mcp/untrusted-origin')
 
-    const noOrigin = await h.send('state', { sessionId: 'session-1' }, { origin: undefined, headers: { origin: '' } })
-    assert.equal(noOrigin.status, 403, 'a POST without an Origin is refused')
+    // The desktop shell serves the GUI from `dsh-app://app/…`, where Chromium
+    // sends NO Origin at all. Every panel call looks like this, and requiring an
+    // Origin refused all of them — the regression this test guards.
+    const shell = await h.send('state', { sessionId: 'session-1' }, { origin: undefined, headers: { origin: '' } })
+    assert.equal(shell.status, 200, 'the desktop shell, which sends no Origin, is accepted')
+    assert.equal(shell.body.ok, true)
+
+    // …but only with the header the browser half sets on every call. Cross-site
+    // a fetch cannot set it (the preflight is never granted) and a form cannot
+    // set it at all, so its absence means the request is not ours.
+    const noHeader = await h.send('state', { sessionId: 'session-1' }, { headers: { 'x-cc-mcp': '' } })
+    assert.equal(noHeader.status, 403, 'a POST without the caller header is refused')
+
+    const noHeaderNoOrigin = await h.send('state', { sessionId: 'session-1' }, { origin: undefined, headers: { origin: '', 'x-cc-mcp': '' } })
+    assert.equal(noHeaderNoOrigin.status, 403, 'a missing Origin is on its own no reason to trust')
 
     // A well-formed path naming no endpoint answers an error envelope, so the
     // panel can render it instead of hitting a bare HTTP failure.

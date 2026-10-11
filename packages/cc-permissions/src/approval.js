@@ -81,10 +81,10 @@ export function parseArguments(raw) {
  * @param {unknown} input.callId - the approval request's call id.
  * @param {string} input.toolName - the approval request's tool name.
  * @param {object} input.parsed - `parseRulesFor` output for the session.
- * @param {object} input.env - `{ cwd, homeDir, projectRoot }` evaluation env.
- * @param {boolean} [input.enableAllProjectMcpServers] - settings flag.
- * @param {(name: string) => boolean} [input.isProjectMcpTool] - project MCP
- *   tool predicate (plugin MCP tools are never covered).
+ * @param {object} input.env - `{ cwd, homeDir }` evaluation env.
+ * @param {(name: string) => boolean} [input.isApprovedProjectMcpTool] - true
+ *   when the tool belongs to a project `.mcp.json` server the settings approve
+ *   (plugin/user/local MCP tools are never in this set).
  * @returns {'allow'|'defer'} whether to answer `allowed-once`.
  */
 export function decideApproval({
@@ -93,8 +93,7 @@ export function decideApproval({
   toolName,
   parsed,
   env,
-  enableAllProjectMcpServers = false,
-  isProjectMcpTool = () => false,
+  isApprovedProjectMcpTool = () => false,
 }) {
   const call = findToolCall(events, callId, toolName)
   if (call === undefined) return 'defer'
@@ -106,10 +105,6 @@ export function decideApproval({
   const name = typeof call.name === 'string' ? call.name : toolName
   const result = evaluateCall(parsed, { tool: name, args }, env)
   if (result.decision === 'allow') return 'allow'
-  if (result.decision === 'none'
-    && enableAllProjectMcpServers === true
-    && isProjectMcpTool(name)) {
-    return 'allow'
-  }
+  if (result.decision === 'none' && isApprovedProjectMcpTool(name)) return 'allow'
   return 'defer'
 }

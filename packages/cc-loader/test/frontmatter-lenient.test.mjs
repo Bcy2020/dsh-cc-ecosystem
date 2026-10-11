@@ -105,7 +105,7 @@ test('discoverAgents loads the reported file end to end', async () => {
   const dir = await fixture({ 'agents/documentation-expert.md': REPORTED })
   try {
     const warnings = []
-    const agents = await discoverAgents(join(dir, 'agents'), 'project', 150, warnings)
+    const agents = await discoverAgents(join(dir, 'agents'), { scope: 'project', baseDir: dir, warnings })
     assert.equal(agents.length, 1)
     const agent = agents[0]
     assert.equal(agent.name, 'documentation-expert')
@@ -120,6 +120,9 @@ test('discoverAgents loads the reported file end to end', async () => {
 
 test('loadClaude reports each lenient read once — skills, commands and agents alike', async () => {
   const dir = await fixture({
+    // A git root here makes the walk hermetic: the bounded ancestor walk stops
+    // at `dir` instead of climbing into this machine's real home directory.
+    '.git': '',
     '.claude/agents/documentation-expert.md': REPORTED,
     '.claude/skills/frontmatter-demo/SKILL.md':
       '---\nname: frontmatter-demo\ndescription: Demo. Marker: colon breaks strict YAML\n---\nbody\n',
@@ -132,7 +135,8 @@ test('loadClaude reports each lenient read once — skills, commands and agents 
       homeDir: join(tmpdir(), 'cc-no-such-home'),
       enableGlobal: false,
     })
-    assert.equal(ir.projectRoot, dir)
+    assert.equal(ir.scopes.gitRoot, dir)
+    assert.deepEqual(ir.scopes.project, [dir])
     assert.deepEqual(ir.components.skills.map((s) => s.name), ['frontmatter-demo'])
     assert.deepEqual(ir.components.commands.map((c) => c.name), ['frontmatter-demo'])
     assert.deepEqual(ir.components.agents.map((a) => a.name), ['documentation-expert'])

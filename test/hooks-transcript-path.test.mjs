@@ -98,7 +98,7 @@ async function capturedPayload(persistence) {
   const { project, capture } = buildProject()
   try {
     const ctx = makeCtx(persistence)
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
     const agent = fakeAgent(project)
     const decision = await ctx._listeners['tools/pre-execute']({
       agent,

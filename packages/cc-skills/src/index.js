@@ -20,26 +20,24 @@ export const name = 'cc-skills'
 export const inject = ['skills']
 
 export const Config = z.object({
-  projectRootMarkers: z.array(z.string()).default(['.git', '.claude']),
-  // 150: between project-dsh (100) and project-agents (200). DSH-native skills
-  // win over Claude skills; Claude skills win over user-level.
+  // Base rank for the first Claude entry returned. Claude Code has no numeric
+  // priority — components merge positionally, in CC's order (user, then project
+  // near → far) — so ranks here are assigned by POSITION in that list. The base
+  // only places the whole family between DSH's own providers (project-dsh 100
+  // wins; project-agents 200 loses).
   skillRank: z.number().default(150),
-  skillSource: z.string().default('project-claude'),
   rulesMaxBytes: z.number().default(65536),
   enableRules: z.boolean().default(true),
   enableSkills: z.boolean().default(true),
   // ── global user-level ~/.claude ───────────────────────────────────────────
   enableGlobal: z.boolean().default(true),
   globalClaudeDir: z.string(),
-  globalSkillRank: z.number().default(160),
-  globalSkillSource: z.string().default('user-claude'),
   homeDir: z.string(),
   // ── plugin roots (M4c) ────────────────────────────────────────────────────
   // Plugin skills/commands are exposed as `plugin-<plugin>-<name>` (DSH skill
   // names are strict kebab-case; CC's `<plugin>:<name>` colon does not fit).
-  // Rank defaults above global (160) so project/global entries win clashes.
+  // They are returned after every project/user entry, so they lose clashes.
   pluginRoots: z.array(z.string()).default([]),
-  pluginSkillRank: z.number().default(170),
   // ── skill tool-scope (allowed-tools / disallowed-tools) ──────────────────
   // CC semantics: while a skill is active (the round it was invoked in), tools
   // listed in allowed-tools run without approval and tools listed in
@@ -53,13 +51,9 @@ export function apply(ctx, config = {}) {
   const loaderOpts = () => ({
     cwd: process.cwd(), // replaced per-call by list/get
     homeDir,
-    projectRootMarkers: config.projectRootMarkers,
     enableGlobal: config.enableGlobal,
     globalClaudeDir: config.globalClaudeDir,
-    projectSkillRank: config.skillRank,
-    globalSkillRank: config.globalSkillRank,
     pluginRoots: config.pluginRoots,
-    pluginSkillRank: config.pluginSkillRank,
   })
   ctx.logger.info('cc-skills: provider registered (project .claude + global ~/.claude)')
 
@@ -91,6 +85,10 @@ class CcSkillsProvider {
     if (cwd === undefined || cwd === null) return []
     const ir = await loadClaude({ ...this.loaderOpts(), cwd })
     const out = []
+    // Ranks follow POSITION: DSH breaks a name clash by lowest rank, and CC's
+    // precedence IS the merge position (user first, then project near → far),
+    // so index order is the whole rule.
+    const rank = () => (this.config.skillRank ?? 150) + out.length
     for (const s of ir.components.skills) {
       if (s.status !== 'DIRECT' && s.status !== 'ADAPTED') continue
       out.push({
@@ -100,7 +98,7 @@ class CcSkillsProvider {
         invocation: s.invocation,
         source: s.source,
         provider: this.name,
-        rank: s.rank,
+        rank: rank(),
         locator: s.locator,
         resourceBase: s.resourceBase,
         path: s.locator.path,
@@ -114,7 +112,7 @@ class CcSkillsProvider {
         invocation: c.invocation,
         source: c.source,
         provider: this.name,
-        rank: c.rank,
+        rank: rank(),
         locator: c.locator,
         resourceBase: c.resourceBase,
         path: c.locator.path,
@@ -132,7 +130,7 @@ class CcSkillsProvider {
           invocation: entry.invocation,
           source: entry.source,
           provider: this.name,
-          rank: entry.rank,
+          rank: rank(),
           locator: entry.locator,
           resourceBase: entry.resourceBase,
           path: entry.locator.path,
@@ -202,7 +200,11 @@ function registerRulesSection(ctx, config, loaderOpts) {
   })
 }
 
-/** Project rules first, then global user rules (project priority in the text). */
+/**
+ * Rules in CC's own order: the user dir first, then the project ancestor chain
+ * root-first (outermost → cwd) — CC pushes user rules before the reversed
+ * ancestor walk (module-0316.js:76348, :76364).
+ */
 async function buildRulesText(cwd, loaderOpts, maxBytes, ctx) {
   const ir = await loadClaude({ ...loaderOpts(), cwd })
   const rules = ir.components.rules.filter((r) => r.status === 'DIRECT' || r.status === 'ADAPTED')
@@ -217,9 +219,11 @@ async function buildRulesText(cwd, loaderOpts, maxBytes, ctx) {
     total += chunk.length
   }
   if (parts.length === 0) return ''
+  // NOT `# claudeMd`: DSH emits that heading itself for CLAUDE.md, and two
+  // identical headings in one context read as one contradictory block.
   return `<system-reminder>
 As you answer the user's questions, you can use the following context:
-# claudeMd
+# claudeRules
 ${parts.join('\n')}
       </system-reminder>`
 }

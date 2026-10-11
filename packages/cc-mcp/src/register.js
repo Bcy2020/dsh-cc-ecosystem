@@ -192,7 +192,7 @@ export function createDefinition(state, entry, rawName, publicName, tool) {
       const conn = await ensureConnected(state, record)
       conn.busy++
       try {
-        armIdle(state, record, conn)
+        armIdle(conn)
         const signal = exec && exec.signal
           ? AbortSignal.any([exec.signal, AbortSignal.timeout(record.entry.toolCallTimeoutMs)])
           : AbortSignal.timeout(record.entry.toolCallTimeoutMs)
@@ -204,28 +204,148 @@ export function createDefinition(state, entry, rawName, publicName, tool) {
         return mapResult(result)
       } finally {
         conn.busy--
-        armIdle(state, record, conn)
+        armIdle(conn)
       }
     },
   }
 }
 
-// ─── connection lifecycle helpers (shared with the controller) ──────────────
+// ─── pooled connections ──────────────────────────────────────────────────────
+//
+// One client per (server identity, config), shared by every session that wants
+// that server — the same idea as Claude Code's process-global MCP clients,
+// which it reconciles by config equality (module-1115.js `reconcileMcpServers`:
+// an unchanged config RETAINS the live client; only `areMcpConfigsEqual` being
+// false triggers `clearServerCache` and a fresh dial). That is why CC's `/mcp`
+// shows servers instantly in a project it has already visited.
+//
+// Without this, every new DSH session re-dialed every server just to enumerate
+// its tools, and closed the client again — measurable as a panel that filled in
+// one row at a time, on every visit.
+//
+// The pool entry owns the client, the tool list, and the idle timer; a session's
+// `record.conn` is a reference to it, so the existing call path is unchanged.
+// A client is closed once it has been idle for `idleTimeoutMs`, or immediately
+// when the server drops the connection itself.
+//
+// The spawn cwd is deliberately NOT part of the key: like CC, a stdio server
+// keeps the working directory of whichever session dialed it first. Only an
+// explicit `cwd` in the server config takes part in the fingerprint.
 
 const MAX_TIMER_DELAY_MS = 0x7fffffff
 
-export function armIdle(state, record, conn) {
+/** @type {Map<string, object>} poolKey -> entry */
+const pool = new Map()
+
+/** Connection-relevant fields of an entry, in a stable order. */
+function fingerprintOf(entry) {
+  return JSON.stringify([
+    entry.transport ?? '',
+    entry.command ?? '',
+    entry.args ?? [],
+    entry.cwd ?? '',
+    entry.url ?? '',
+    entry.env ?? {},
+    entry.headers ?? {},
+  ])
+}
+
+/** Pool identity: the server (scope + name + plugin) plus its config. */
+export function poolKeyOf(entry) {
+  return `${serverKey(entry)} ${fingerprintOf(entry)}`
+}
+
+/**
+ * The live pooled connection for `entry`, dialing once on a miss.
+ * Concurrent callers for the same key share one dial attempt.
+ * @param {object} entry - the runtime entry to connect.
+ * @param {{ baseCwd?: string, idleTimeoutMs?: number }} [opts] - `baseCwd` is
+ *   used only for the dial that actually happens (stdio servers default to it).
+ * @returns {Promise<object>} the pool entry: { key, client, tools, busy,
+ *   idleTimer, closed }
+ */
+export async function acquire(entry, opts = {}) {
+  const key = poolKeyOf(entry)
+  let conn = pool.get(key)
+  if (conn !== undefined && !conn.closed) {
+    // A session wants this server: keep it warm while that session lives.
+    clearIdle(conn)
+    return conn
+  }
+
+  if (conn === undefined) {
+    conn = {
+      key,
+      entry,
+      client: null,
+      tools: [],
+      busy: 0,
+      idleTimer: null,
+      closed: false,
+      dialing: null,
+      idleTimeoutMs: opts.idleTimeoutMs ?? 0,
+    }
+    pool.set(key, conn)
+  }
+  if (conn.dialing === null) {
+    const attempt = dial(conn, entry, opts.baseCwd)
+    conn.dialing = attempt
+    attempt.catch(() => {}).finally(() => {
+      if (conn.dialing === attempt) conn.dialing = null
+    })
+  }
+  await conn.dialing
+  if (conn.closed) throw new Error(`connection to ${entry.serverName} closed during connect`)
+  return conn
+}
+
+async function dial(conn, entry, baseCwd) {
+  const { client, tools, closed } = await connectAndList(entry, baseCwd, () => {
+    // The server hung up: drop it so the next acquire re-dials.
+    conn.closed = true
+    clearIdle(conn)
+    if (pool.get(conn.key) === conn) pool.delete(conn.key)
+  })
+  if (closed) {
+    try { await client.close() } catch { /* best effort */ }
+    conn.closed = true
+    if (pool.get(conn.key) === conn) pool.delete(conn.key)
+    throw new Error(`connection to ${entry.serverName} closed during connect`)
+  }
+  conn.client = client
+  conn.tools = tools
+  armIdle(conn)
+  return conn
+}
+
+/** A session is done with the connection; it closes once idle. */
+export function release(conn) {
+  if (conn !== null && conn !== undefined) armIdle(conn)
+}
+
+/** Close and forget a pooled connection (config change, manual reconnect). */
+export async function invalidate(key) {
+  const conn = pool.get(key)
+  if (conn === undefined) return
+  pool.delete(key)
+  conn.closed = true
   clearIdle(conn)
-  if (conn.busy > 0) return
-  const timeout = record.entry.idleTimeoutMs
-  if (timeout <= 0) return
-  conn.idleTimer = setTimeout(() => {
-    conn.idleTimer = null
-    if (record.conn !== conn) return
-    record.conn = null
-    conn.client.close().catch(() => {})
-  }, Math.min(timeout, MAX_TIMER_DELAY_MS))
-  conn.idleTimer.unref?.()
+  try { await conn.client?.close() } catch { /* best effort */ }
+}
+
+/** Close and forget every pooled connection (plugin unload). */
+export async function drainPool() {
+  await Promise.all([...pool.keys()].map((key) => invalidate(key)))
+}
+
+export function poolStats() {
+  return [...pool.values()].map((conn) => ({
+    key: conn.key,
+    serverName: conn.entry?.serverName ?? null,
+    tools: conn.tools.length,
+    busy: conn.busy,
+    idle: conn.idleTimer !== null,
+  }))
 }
 
 export function clearIdle(conn) {
@@ -235,9 +355,24 @@ export function clearIdle(conn) {
   }
 }
 
+/** (Re)start the idle close for a pooled connection with no work in flight. */
+export function armIdle(conn) {
+  clearIdle(conn)
+  if (conn.busy > 0) return
+  const timeout = conn.idleTimeoutMs
+  if (!(timeout > 0)) return
+  conn.idleTimer = setTimeout(() => {
+    conn.idleTimer = null
+    // A call may have started since: the caller's own finally will re-arm.
+    if (conn.busy > 0) return
+    void invalidate(conn.key)
+  }, Math.min(timeout, MAX_TIMER_DELAY_MS))
+  conn.idleTimer.unref?.()
+}
+
 /** Get the live connection for a record, connecting lazily when absent. */
 export function ensureConnected(state, record) {
-  if (record.conn !== null) return Promise.resolve(record.conn)
+  if (record.conn !== null && !record.conn.closed) return Promise.resolve(record.conn)
   if (record.connecting === null) {
     const attempt = openConnection(state, record)
     record.connecting = attempt
@@ -250,25 +385,14 @@ export function ensureConnected(state, record) {
 
 export async function openConnection(state, record) {
   const entry = record.entry
-  const conn = { client: null, idleTimer: null, busy: 0 }
-  const { client, closed } = await connectAndList(entry, state.baseCwd, () => {
-    if (record.conn === conn) {
-      record.conn = null
-      clearIdle(conn)
-    }
+  const conn = await acquire(entry, {
+    baseCwd: state.baseCwd,
+    idleTimeoutMs: entry.idleTimeoutMs,
   })
-  conn.client = client
   if (state.disposed || state.servers.get(serverKey(entry)) !== record) {
-    try { await client.close() } catch { /* best effort */ }
+    release(conn)
     throw new Error(`agent disposed or config reloaded during connect`)
   }
   record.conn = conn
-  if (closed) {
-    record.conn = null
-    clearIdle(conn)
-    try { await client.close() } catch { /* best effort */ }
-    throw new Error(`connection closed during connect`)
-  }
-  armIdle(state, record, conn)
   return conn
 }

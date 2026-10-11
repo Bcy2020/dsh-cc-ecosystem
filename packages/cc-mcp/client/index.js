@@ -376,8 +376,7 @@ window.__ModuleLoader__.load({ id: "dsh-cc-mcp", factory: (require) => {
   function renderList(current, snapshot) {
     var servers = snapshot && Array.isArray(snapshot.servers) ? snapshot.servers : []
     var known = snapshot ? snapshot.known !== false : false
-    var projectRoot = snapshot ? str(snapshot.projectRoot) : ''
-    setText(current.subtitle, current.loading ? 'Loading\u2026' : (projectRoot || 'No project root resolved'))
+    setText(current.subtitle, subtitleFor(current, snapshot))
     clear(current.body)
 
     if (current.loading) {
@@ -389,7 +388,7 @@ window.__ModuleLoader__.load({ id: "dsh-cc-mcp", factory: (require) => {
       return
     }
     if (!known || servers.length === 0) {
-      current.body.appendChild(emptyState('No MCP servers configured for this project', true))
+      current.body.appendChild(emptyState('No MCP servers configured for this session', true))
       return
     }
     for (var i = 0; i < servers.length; i += 1) {
@@ -433,6 +432,29 @@ window.__ModuleLoader__.load({ id: "dsh-cc-mcp", factory: (require) => {
     }
     if (scope === 'project') return { label: 'Project', plugin: '' }
     return { label: scope ? scope.charAt(0).toUpperCase() + scope.slice(1) : 'Server', plugin: '' }
+  }
+
+  /* There is no "project root" to show — Claude Code discovers MCP config per
+   * scope, so the subtitle counts what each scope contributed instead. */
+  var SUBTITLE_SCOPES = ['project', 'user', 'local', 'plugin', 'host']
+
+  function scopeSummary(snapshot) {
+    var servers = snapshot && Array.isArray(snapshot.servers) ? snapshot.servers : []
+    var parts = []
+    for (var i = 0; i < SUBTITLE_SCOPES.length; i += 1) {
+      var n = 0
+      for (var j = 0; j < servers.length; j += 1) {
+        if (str(servers[j].scope) === SUBTITLE_SCOPES[i]) n += 1
+      }
+      if (n > 0) parts.push(SUBTITLE_SCOPES[i] + ' ' + n)
+    }
+    return parts.join(' \u00B7 ')
+  }
+
+  function subtitleFor(current, snapshot) {
+    if (current.loading) return 'Loading\u2026'
+    var summary = snapshot ? scopeSummary(snapshot) : ''
+    return summary || 'No MCP servers'
   }
 
   function typeCell(entry) {
@@ -519,8 +541,7 @@ window.__ModuleLoader__.load({ id: "dsh-cc-mcp", factory: (require) => {
 
   function renderDetail(current, snapshot) {
     var servers = snapshot && Array.isArray(snapshot.servers) ? snapshot.servers : []
-    var projectRoot = snapshot ? str(snapshot.projectRoot) : ''
-    setText(current.subtitle, projectRoot || 'No project root resolved')
+    setText(current.subtitle, subtitleFor(current, snapshot))
     var entry = null
     for (var i = 0; i < servers.length; i += 1) {
       if (entryKey(servers[i]) === current.selectedKey) { entry = servers[i]; break }
@@ -536,16 +557,19 @@ window.__ModuleLoader__.load({ id: "dsh-cc-mcp", factory: (require) => {
 
     if (!current.checking) {
       var info = scopeInfo(entry)
-      var source = str(entry.source)
+      var source = str(entry.sourcePath) || str(entry.source)
       var sourceLine
       if (str(entry.scope) === 'host') {
         /* A host row is the profile's own dsh-mcp-client instance: this plugin
          * lists it and can hide it here, but the host owns the connection. */
         sourceLine = source || 'Host MCP client row in the profile config'
       } else if (info.plugin) {
-        sourceLine = 'Plugin ' + info.plugin + ' at ' + (source || 'unknown path')
+        sourceLine = 'Plugin ' + info.plugin + ' \u00b7 ' + (str(entry.pluginPath) || source || 'unknown path')
       } else {
-        sourceLine = 'Configured in ' + (source || 'an unknown source')
+        /* Where the server was read from: the scope it was declared in and the
+         * file itself. Claude Code discovers MCP config per scope, so this is
+         * the whole provenance \u2014 there is no project root behind it. */
+        sourceLine = info.label + ' scope \u00b7 ' + (source || 'unknown source')
       }
       current.body.appendChild(el('p', 'ccmcp-source', sourceLine))
     } else {

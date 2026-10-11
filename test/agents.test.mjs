@@ -37,7 +37,7 @@ You are a strict code reviewer. Focus on correctness and style.
 test('discoverAgents parses frontmatter + body into IR', async () => {
   const dir = await fixture({ 'agents/code-reviewer.md': BASIC })
   try {
-    const agents = await discoverAgents(join(dir, 'agents'), 'project', 150)
+    const agents = await discoverAgents(join(dir, 'agents'), { scope: 'project', baseDir: dir })
     assert.equal(agents.length, 1)
     const a = agents[0]
     assert.equal(a.kind, 'agent')
@@ -49,6 +49,7 @@ test('discoverAgents parses frontmatter + body into IR', async () => {
     assert.equal(a.systemPrompt, 'You are a strict code reviewer. Focus on correctness and style.')
     assert.equal(a.status, 'DIRECT')
     assert.equal(a.scope, 'project')
+    assert.equal(a.baseDir, dir, 'the .claude dir that contributed the agent')
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
@@ -62,7 +63,7 @@ test('discoverAgents falls back to file stem name; skips missing description/bod
   })
   try {
     const warnings = []
-    const agents = await discoverAgents(join(dir, 'agents'), 'project', 150, warnings)
+    const agents = await discoverAgents(join(dir, 'agents'), { scope: 'project', baseDir: dir, warnings })
     assert.deepEqual(agents.map((a) => a.name), ['my-agent'])
     assert.equal(agents[0].systemPrompt, 'Body here.')
     assert.ok(warnings.some((w) => w.includes('no-desc')))
@@ -88,7 +89,7 @@ test('buildAgentEntry: unknown fields land in notes, isolation captured', () => 
   const e = buildAgentEntry({
     path: '/x/a.md', directory: '/x', name: 'a', description: 'd',
     body: 'body', fm: { name: 'a', description: 'd', isolation: 'worktree' },
-    scope: 'global', rank: 160,
+    scope: 'global', baseDir: '/x/.claude',
   })
   assert.equal(e.status, 'BLOCKED')
   assert.equal(e.isolation, 'worktree')
@@ -106,7 +107,7 @@ test('buildAgentEntry: context/memory/color extracted, agent field reported', ()
       color: 'blue',
       agent: 'parent-agent',
     },
-    scope: 'project', rank: 150,
+    scope: 'project', baseDir: '/x/.claude',
   })
   assert.deepEqual(e.context, ['Extra guidance one', 'Extra guidance two'])
   assert.equal(e.memory, 'project')
@@ -127,16 +128,19 @@ test('classifyAgentFields: color and agent are ADAPTED, not unknown', () => {
   assert.ok(notes2.some((n) => n.includes('agent field')))
 })
 
-test('mergeAgentCatalog: project beats global on name clash, fail loud', async () => {
+test('mergeAgentCatalog: the LAST root wins a name clash, and says so', async () => {
   const dir = await fixture({
     'proj/agents/dup.md': `---\nname: dup\ndescription: project one\n---\nProject body.\n`,
     'glob/agents/dup.md': `---\nname: dup\ndescription: global one\n---\nGlobal body.\n`,
   })
   try {
     const warnings = []
+    // CC's markdown order: the user dir first, then project roots near → far.
+    // The catalog must be unique (DSH agent names are identifiers), so the last
+    // entry — the nearest project — owns the name.
     const { agents } = await mergeAgentCatalog([
-      { root: join(dir, 'proj/agents'), scope: 'project', rank: 150 },
-      { root: join(dir, 'glob/agents'), scope: 'global', rank: 160 },
+      { root: join(dir, 'glob/agents'), scope: 'global', baseDir: join(dir, 'glob') },
+      { root: join(dir, 'proj/agents'), scope: 'project', baseDir: join(dir, 'proj') },
     ], warnings)
     assert.equal(agents.length, 1)
     assert.equal(agents[0].description, 'project one')

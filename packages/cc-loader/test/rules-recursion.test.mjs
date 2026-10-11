@@ -31,7 +31,7 @@ const names = (rules) => rules.map((r) => r.name)
 test('top-level rules keep their filename and are sorted', async () => {
   const { dir, cleanup } = await rulesDir(['02-b.md', '01-a.md'])
   try {
-    assert.deepEqual(names(await discoverRules(dir, 'project')), ['01-a.md', '02-b.md'])
+    assert.deepEqual(names(await discoverRules(dir, { source: 'project', baseDir: dir })), ['01-a.md', '02-b.md'])
   } finally { await cleanup() }
 })
 
@@ -42,7 +42,7 @@ test('rules in subfolders are found; name is the relative path', async () => {
     'typescript/a.md',
   ])
   try {
-    const rules = await discoverRules(dir, 'project')
+    const rules = await discoverRules(dir, { source: 'project', baseDir: dir })
     assert.deepEqual(names(rules), ['a.md', 'common/z.md', 'typescript/a.md'])
   } finally { await cleanup() }
 })
@@ -50,7 +50,7 @@ test('rules in subfolders are found; name is the relative path', async () => {
 test('the same filename in two folders yields two distinct rules', async () => {
   const { dir, cleanup } = await rulesDir(['common/style.md', 'typescript/style.md'])
   try {
-    const rules = await discoverRules(dir, 'project')
+    const rules = await discoverRules(dir, { source: 'project', baseDir: dir })
     assert.deepEqual(names(rules), ['common/style.md', 'typescript/style.md'])
     assert.notEqual(rules[0].path, rules[1].path)
   } finally { await cleanup() }
@@ -59,7 +59,7 @@ test('the same filename in two folders yields two distinct rules', async () => {
 test('nesting is not depth-limited', async () => {
   const { dir, cleanup } = await rulesDir(['a/b/c/d/deep.md'])
   try {
-    assert.deepEqual(names(await discoverRules(dir, 'project')), ['a/b/c/d/deep.md'])
+    assert.deepEqual(names(await discoverRules(dir, { source: 'project', baseDir: dir })), ['a/b/c/d/deep.md'])
   } finally { await cleanup() }
 })
 
@@ -70,27 +70,28 @@ test('hidden folders and node_modules are skipped', async () => {
     'node_modules/pkg/vendored.md',
   ])
   try {
-    assert.deepEqual(names(await discoverRules(dir, 'project')), ['keep.md'])
+    assert.deepEqual(names(await discoverRules(dir, { source: 'project', baseDir: dir })), ['keep.md'])
   } finally { await cleanup() }
 })
 
 test('non-markdown files anywhere in the tree are skipped', async () => {
   const { dir, cleanup } = await rulesDir(['keep.md', 'notes.txt', 'common/readme.json'])
   try {
-    assert.deepEqual(names(await discoverRules(dir, 'project')), ['keep.md'])
+    assert.deepEqual(names(await discoverRules(dir, { source: 'project', baseDir: dir })), ['keep.md'])
   } finally { await cleanup() }
 })
 
 test('a missing rules dir yields no rules', async () => {
   const dir = join(tmpdir(), 'cc-rules-does-not-exist')
-  assert.deepEqual(await discoverRules(dir, 'project'), [])
+  assert.deepEqual(await discoverRules(dir, { source: 'project', baseDir: dir }), [])
 })
 
 test('every entry carries its scope and a readable absolute path', async () => {
   const { dir, cleanup } = await rulesDir(['common/a.md'])
   try {
-    const [rule] = await discoverRules(dir, 'user')
-    assert.equal(rule.scope, 'user')
+    const [rule] = await discoverRules(dir, { source: 'user', baseDir: '/home/u/.claude' })
+    assert.equal(rule.source, 'user')
+    assert.equal(rule.baseDir, '/home/u/.claude', 'the .claude dir that contributed the rule')
     assert.equal(rule.status, 'DIRECT')
     assert.equal(rule.path, join(dir, 'common', 'a.md'))
   } finally { await cleanup() }

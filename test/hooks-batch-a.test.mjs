@@ -163,7 +163,7 @@ test('batch-A wiring: if filtering on PreToolUse runs only matching hooks', asyn
       runs.push(req)
       return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } }
     }
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
 
     const agent = makeAgent(project)
     await ctx._listeners['agent/session-start']({ agent, source: 'startup' })
@@ -209,7 +209,7 @@ test('batch-A wiring: PostToolUseFailure fires on a failed tool, PostToolUse on 
         ? '{"hookSpecificOutput":{"hookEventName":"PostToolUseFailure","additionalContext":"fail note"}}'
         : '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"ok note"}}' }, stderr: { text: '' } }
     }
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
 
     const agent = makeAgent(project)
     await ctx._listeners['agent/session-start']({ agent, source: 'startup' })
@@ -258,7 +258,7 @@ test('batch-A wiring: SessionEnd fires on top-level disposal only', async () => 
     const runs = []
     const ctx = makeCtx()
     ctx.shell.run = async (req) => { runs.push(req); return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } } }
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
 
     const top = makeAgent(project, 'top-1')
     await ctx._listeners['agent/session-start']({ agent: top, source: 'startup' })
@@ -294,7 +294,7 @@ test('batch-A wiring: PreCompact/PostCompact fire from the session event stream 
     const runs = []
     const ctx = makeCtx()
     ctx.shell.run = async (req) => { runs.push(req); return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } } }
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
 
     const agent = makeAgent(project)
     await ctx._listeners['agent/session-start']({ agent, source: 'startup' })
@@ -398,7 +398,7 @@ test('regression: SessionStart hooks still run when the agent has no session yet
       runs.push(req)
       return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } }
     }
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
 
     // The payload carries no cwd, so discovery falls back to process.cwd();
     // stand in the project to make that fallback land on real hooks.

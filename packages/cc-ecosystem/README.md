@@ -8,7 +8,7 @@ One install brings the whole [dsh-cc](https://github.com/Bcy2020/dsh-cc-ecosyste
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem@0.3.4
+dsh plugin --profile <name> add dsh-cc-ecosystem@0.4.0
 ```
 <!-- versions:end -->
 

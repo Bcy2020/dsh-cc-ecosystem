@@ -15,15 +15,22 @@ project-level scan.
 
 ## What it does
 
-- **Skills**: `<project>/.claude/skills/**/SKILL.md` + `~/.claude/skills/**/SKILL.md`
-  surface as native DSH skills (slash trigger, `skill` tool, model catalog).
+- **Skills**: every `.claude/skills/**/SKILL.md` on the session's project chain —
+  from the cwd up to the git root, home excluded — plus `~/.claude/skills/**`.
 - **Commands**: `.claude/commands/*.md` → user-invocable skills (`/name`).
-- **Rules**: `.claude/rules/*.md` (project first, then global) are injected once
-  per session as a user-role `<system-reminder>` (Claude Code `prependUserContext`
-  envelope).
+- **Rules**: `.claude/rules/**` and `~/.claude/rules/**` are injected once per
+  session as a user-role `<system-reminder>` (Claude Code `prependUserContext`
+  envelope), under a `# claudeRules` heading.
 
-Project entries outrank global ones via skill rank (project 150 < global 160;
-lower ranks win duplicate names in DSH).
+Skills stop at the git root; **rules walk the whole ancestor chain to the
+filesystem root, root-first**. That asymmetry is Claude Code's own (its
+`getProjectDirsUpToHome` vs. the memory/rules walk) and is copied deliberately
+rather than unified.
+
+Entries merge in Claude Code's order — the user dir first, then project roots
+near → far — and **same-named entries are not deduplicated**: DSH breaks a tie by
+rank, so the adapter assigns ranks by POSITION in that list (`skillRank` sets the
+base).
 
 ## Install
 
@@ -31,7 +38,7 @@ The version is pinned deliberately: pnpm 11 withholds releases younger than 24 h
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-skills@0.3.4
+dsh plugin --profile <name> add dsh-cc-skills@0.4.0
 ```
 <!-- versions:end -->
 
@@ -43,9 +50,7 @@ dsh plugin --profile <name> add dsh-cc-skills@0.3.4
 | `enableRules` | `true` | Inject rules |
 | `enableGlobal` | `true` | Also scan `~/.claude` |
 | `globalClaudeDir` | `<home>/.claude` | Global Claude dir override |
-| `globalSkillRank` | `160` | Global rank (must be > project `skillRank` 150) |
-| `projectRootMarkers` | `['.git', '.claude']` | Project root discovery markers; `.claude` resolves projects without a `.git` repo. The user's home is never a root |
-| `skillRank` | `150` | Project skill rank |
+| `skillRank` | `150` | Base rank; ranks are assigned by POSITION in Claude Code's merge order |
 | `rulesMaxBytes` | `65536` | Rules injection size cap |
 
 ## License

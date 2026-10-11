@@ -442,7 +442,8 @@ async function isFile(path) {
  * Parse one flat command `.md` file (manifest `commands` may name individual
  * files, not just directories). Mirrors discoverCommands' per-file shape.
  */
-async function discoverCommandFile(filePath, source, rank, warnings = []) {
+async function discoverCommandFile(filePath, opts = {}) {
+  const { source, baseDir, warnings = [] } = opts
   const raw = await readTextSafe(filePath)
   if (raw === undefined) return undefined
   const parsed = parseFrontmatter(raw, warnings, `command "${filePath}"`)
@@ -461,7 +462,7 @@ async function discoverCommandFile(filePath, source, rank, warnings = []) {
     whenToUse: undefined,
     invocation: { modelInvocable: true, userInvocable: true },
     source,
-    rank,
+    baseDir,
     locator: { path: filePath, directory: dirname(filePath) },
     resourceBase: { kind: 'directory', path: dirname(filePath) },
     frontmatter: parsed?.data ?? null,
@@ -475,7 +476,8 @@ async function discoverCommandFile(filePath, source, rank, warnings = []) {
  * Parse one agent `.md` file (manifest `agents` may name individual files).
  * Mirrors discoverAgents' validation, reusing buildAgentEntry for the IR.
  */
-async function discoverAgentFile(filePath, scope, rank, warnings = []) {
+async function discoverAgentFile(filePath, opts = {}) {
+  const { scope, baseDir, warnings = [] } = opts
   const raw = await readTextSafe(filePath)
   if (raw === undefined) return undefined
   const parsed = parseFrontmatter(raw, warnings, `agent "${filePath}"`)
@@ -500,7 +502,7 @@ async function discoverAgentFile(filePath, scope, rank, warnings = []) {
     warnings.push(`agent "${filePath}" skipped: empty system prompt body`)
     return undefined
   }
-  return buildAgentEntry({ path: filePath, directory: dirname(filePath), name, description, body, fm, scope, rank, warnings })
+  return buildAgentEntry({ path: filePath, directory: dirname(filePath), name, description, body, fm, scope, baseDir, warnings })
 }
 
 /**
@@ -509,7 +511,7 @@ async function discoverAgentFile(filePath, scope, rank, warnings = []) {
  * the official path behavior rules (see header). Never throws.
  * @param {string} root - plugin directory.
  * @param {object} [opts] - {
- *   warn?, skillRank? (=160), agentScope? ('plugin'), readJsonText? (test seam)
+ *   warn?, readJsonText? (test seam)
  * }
  * @returns {Promise<object>} {
  *   root, name, pluginJsonPath?, manifest?, paths: resolved absolute dirs,
@@ -523,7 +525,6 @@ export async function discoverPluginRoot(root, opts = {}) {
   const warn = opts.warn ?? (() => {})
   const warnings = []
   const localWarn = (m) => { warnings.push(m); warn(m) }
-  const skillRank = opts.skillRank ?? 160
 
   // 1. Manifest (optional). Name = manifest name, else directory basename.
   const pluginJsonPath = join(root, '.claude-plugin', 'plugin.json')
@@ -586,31 +587,32 @@ export async function discoverPluginRoot(root, opts = {}) {
   const hasSkillsDir = await pathExists(join(root, 'skills'))
   const hasManifestSkills = Array.isArray(mpaths.skills) && mpaths.skills.length > 0
   const rootSkillExists = await pathExists(join(root, 'SKILL.md'))
+  const skillTag = { source: 'plugin', baseDir: root, warnings }
   if (!hasSkillsDir && !hasManifestSkills && rootSkillExists) {
     // Single-skill plugin: the root itself is a skill bundle.
-    components.skills.push(...(await discoverSkills(root, 'plugin', skillRank, warnings)).map(markPlugin))
+    components.skills.push(...(await discoverSkills(root, skillTag)).map(markPlugin))
   } else {
     for (const dir of skillDirs) {
-      components.skills.push(...(await discoverSkills(dir, 'plugin', skillRank, warnings)).map(markPlugin))
+      components.skills.push(...(await discoverSkills(dir, skillTag)).map(markPlugin))
     }
   }
 
   for (const dir of paths.commands) {
     // Manifest `commands` may name single .md files or directories.
     if (await isFile(dir)) {
-      const entry = await discoverCommandFile(dir, 'plugin', skillRank, warnings)
+      const entry = await discoverCommandFile(dir, skillTag)
       if (entry !== undefined) components.commands.push(markPlugin(entry))
     } else {
-      components.commands.push(...(await discoverCommands(dir, 'plugin', skillRank, warnings)).map(markPlugin))
+      components.commands.push(...(await discoverCommands(dir, skillTag)).map(markPlugin))
     }
   }
   for (const dir of paths.agents) {
     // Manifest `agents` may name single .md files or directories.
     if (await isFile(dir)) {
-      const entry = await discoverAgentFile(dir, 'plugin', skillRank, warnings)
+      const entry = await discoverAgentFile(dir, skillTag)
       if (entry !== undefined) components.agents.push(markPlugin(entry))
     } else {
-      components.agents.push(...(await discoverAgents(dir, 'plugin', skillRank, warnings)).map(markPlugin))
+      components.agents.push(...(await discoverAgents(dir, skillTag)).map(markPlugin))
     }
   }
 

@@ -1,15 +1,16 @@
 // dsh-cc-mcp — load Claude Code MCP configs into DSH as runtime-registered
 // tools, on the official @modelcontextprotocol/sdk.
 //
-// Sources (parsed by the shared dsh-cc-loader):
-//   - project root .mcp.json            → mcp__<server>__<tool> (DSH-native)
-//   - plugin roots (config.pluginRoots) → mcp__plugin_<name>_<server>__<tool>
-//     (official CC plugin naming), from each plugin's .mcp.json / plugin.json
+// Sources (parsed by the shared dsh-cc-loader), matching Claude Code's own
+// scopes: `~/.claude.json` (user + local) and every ancestor's `.mcp.json`
+// (project, nearest file winning a name clash) → `mcp__<server>__<tool>`;
+// plugin roots (config.pluginRoots) → `mcp__plugin_<name>_<server>__<tool>`
+// (official CC plugin naming), from each plugin's .mcp.json / plugin.json.
 //
 // Modeled on dsh-project-mcp-bridge (MIT): tools register eagerly into the
 // agent scope layer (agent/created), connections are lazy with an idle
-// timeout, and project .mcp.json changes hot-reload. Env values are expanded
-// at runtime from process.env — nothing is written to disk.
+// timeout, and config changes hot-reload. Env values are expanded at runtime
+// from process.env — nothing is written to disk.
 //
 // The management surface (see ./manage.js) rides on top of that registration
 // path: every server keeps a status row (ready / error / disabled / skipped)
@@ -26,7 +27,7 @@ import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import Schema from '@deepseek-ai/schemastery'
-import { findProjectRoot, discoverProjectMcp, discoverPluginRoot } from 'dsh-cc-loader'
+import { discoverMcpScopes, discoverPluginRoot, fullAncestors } from 'dsh-cc-loader'
 
 // Re-exported for callers that need the dir-basename fallback name without a
 // manifest (discoverPluginRoot prefers manifest `name`; pluginNameOf is the
@@ -41,7 +42,7 @@ export { pluginNameOf } from 'dsh-cc-loader'
 const MODULE_SUFFIX = new URL(import.meta.url).search
 
 const {
-  publicToolName, connectAndList, createDefinition, clearIdle,
+  publicToolName, createDefinition, acquire, release, invalidate, poolKeyOf, poolStats, drainPool,
 } = await import(`./register.js${MODULE_SUFFIX}`)
 const {
   RPC_CHANNEL, createDisabledStore, createRouteHandler, defaultStatePath, failuresOf, formatTextReport,
@@ -57,16 +58,24 @@ export const Config = Schema.object({
   idleTimeoutMs: Schema.number().default(300000),
   toolCallTimeoutMs: Schema.number().default(60000),
   watchProject: Schema.boolean().default(true),
-  projectRootMarkers: Schema.array(Schema.string()).default(['.git', '.dsh', '.claude']),
+  // How many servers may be dialed at once. Claude Code bounds this too; the
+  // difference between 1 and a handful is the difference between a panel that
+  // fills in one row per round-trip and one that settles at once.
+  connectConcurrency: Schema.number().default(8),
   // Management surface: the `/mcp` command and the panel's route.
   enableManager: Schema.boolean().default(true),
   // List the host's `dsh-mcp-client` rows in the panel (and allow hiding them
   // for this workspace). They are the host's to connect; this plugin never
   // rewrites the profile config.
   manageHostRows: Schema.boolean().default(true),
-  // Explicit state-file override. Empty = per workspace:
-  // `<projectRoot>/.dsh/cc-mcp-state.json`.
+  // Explicit state-file override. Empty = per session workspace:
+  // `<workspace>/.dsh/cc-mcp-state.json`.
   statePath: Schema.string().default(''),
+  // Where Claude Code keeps the user/local MCP scopes. Empty =
+  // `<homeDir>/.claude.json` (CC's own default).
+  claudeJsonPath: Schema.string().default(''),
+  /** Override os.homedir() (mainly tests). */
+  homeDir: Schema.string(),
 })
 
 const DEFAULT_CALL_TIMEOUT_MS = 60000
@@ -86,13 +95,17 @@ const VERSION = (() => {
 // Per-agent live controllers; module-level because agent/created wiring must
 // outlive one listener call. Cleanup on agent/disposed and plugin unload.
 const agentStates = new Map()
-const projectWatchers = new Map() // projectRoot -> { controllers: Set, timer }
+const projectWatchers = new Map() // workspace path -> { controllers: Set, timer, paths }
 
-// Enable/disable decisions are WORKSPACE-scoped: each project keeps its own
-// `<projectRoot>/.dsh/cc-mcp-state.json`, so disabling github here does not
-// touch another workspace and never edits the host's profile config. Sessions
-// without a project root fall back to the machine-wide file.
-const stores = new Map() // projectRoot -> { store, ready }
+// Enable/disable decisions are WORKSPACE-scoped: each session workspace keeps
+// its own `<workspace>/.dsh/cc-mcp-state.json`, so disabling github here does
+// not touch another workspace and never edits the host's profile config. A
+// session with no workspace falls back to the machine-wide file.
+//
+// The anchor is the SESSION's own start directory (the host-side workspace),
+// not a "project root" — Claude Code has no such thing — and not the DSH
+// process's own cwd, which every session shares.
+const stores = new Map() // workspace path -> { store, ready }
 let globalStore = null
 let globalStoreReady = Promise.resolve([])
 
@@ -105,9 +118,9 @@ function log(ctx, level, message) {
   try { ctx.logger?.[level]?.(`dsh-cc-mcp: ${message}`) } catch { /* logger absence is not fatal */ }
 }
 
-/** Workspace state file: `<projectRoot>/.dsh/cc-mcp-state.json`. */
-function workspaceStatePath(projectRoot) {
-  return join(projectRoot, '.dsh', 'cc-mcp-state.json')
+/** Workspace state file: `<session workspace>/.dsh/cc-mcp-state.json`. */
+function workspaceStatePath(cwd) {
+  return join(cwd, '.dsh', 'cc-mcp-state.json')
 }
 
 /**
@@ -116,17 +129,17 @@ function workspaceStatePath(projectRoot) {
  * @returns {Promise<object|undefined>}
  */
 async function storeFor(state) {
-  const projectRoot = state.projectRoot
-  if (projectRoot === undefined || projectRoot === null || projectRoot === '') {
+  const workspace = state.baseCwd
+  if (workspace === undefined || workspace === null || workspace === '') {
     await globalStoreReady
     return globalStore ?? undefined
   }
   const pinned = typeof state.config.statePath === 'string' ? state.config.statePath.trim() : ''
-  const key = pinned === '' ? String(projectRoot) : `path:${pinned}`
+  const key = pinned === '' ? String(workspace) : `path:${pinned}`
   let entry = stores.get(key)
   if (entry === undefined) {
     const store = createDisabledStore({
-      path: pinned === '' ? workspaceStatePath(String(projectRoot)) : pinned,
+      path: pinned === '' ? workspaceStatePath(String(workspace)) : pinned,
       log: (level, message) => log(state.ctx, level, message),
     })
     entry = { store, ready: store.load() }
@@ -324,10 +337,30 @@ async function collectEntries(state) {
   const cfg = state.config
   const entries = []
   const sources = []
-  if (cfg.enableProject && state.projectRoot !== undefined) {
-    const found = await discoverProjectMcp(state.projectRoot, { warn: (m) => log(state.ctx, 'warn', `agent ${state.agent.id}: ${m}`) })
-    for (const entry of toRuntimeEntries(found.servers, { idleTimeoutMs: cfg.idleTimeoutMs, toolCallTimeoutMs: cfg.toolCallTimeoutMs })) {
-      entries.push({ ...entry, source: found.sources?.[0] ?? join(state.projectRoot, '.mcp.json') })
+  if (cfg.enableProject !== false) {
+    // Claude Code's own scopes, resolved from the session's workspace:
+    // user + local from `~/.claude.json`, and project from every ancestor's
+    // `.mcp.json` (nearest file wins a name clash). Each entry keeps the scope
+    // and the file it came from, which is what the panel's detail shows.
+    const found = await discoverMcpScopes(state.baseCwd, {
+      homeDir: state.config.homeDir ?? homedir(),
+      ...(typeof state.config.claudeJsonPath === 'string' && state.config.claudeJsonPath.trim() !== ''
+        ? { claudeJsonPath: state.config.claudeJsonPath } : {}),
+      warn: (m) => log(state.ctx, 'warn', `agent ${state.agent.id}: ${m}`),
+    })
+    state.mcpScopes = {
+      shadowed: found.shadowed,
+      byScope: found.byScope,
+      claudeJson: found.claudeJson,
+    }
+    for (const entry of found.servers) {
+      if (entry.status !== 'DIRECT') continue // UNSUPPORTED (sse/ws) reported, not registered
+      entries.push({
+        ...entry,
+        toolCallTimeoutMs: entry.toolCallTimeoutMs ?? cfg.toolCallTimeoutMs,
+        idleTimeoutMs: entry.idleTimeoutMs ?? cfg.idleTimeoutMs,
+        source: entry.sourcePath,
+      })
     }
     sources.push(...found.sources)
   }
@@ -363,44 +396,51 @@ function hasUpperServerTools(state, prefix) {
   }
 }
 
-async function syncSchema(state, entry) {
-  const { client, tools } = await connectAndList(entry, state.baseCwd)
-  try {
-    const definitions = new Map()
-    const listed = []
-    for (const tool of tools) {
-      const publicName = publicToolName(
-        { serverName: entry.serverName, pluginName: entry.pluginName },
-        tool.name,
-      )
-      if (definitions.has(publicName)) {
-        throw new Error(`server listed tool "${tool.name}" more than once — invalid tool list`)
+async function syncSchema(state, record) {
+  const entry = record.entry
+  // Pooled (see register.js): an unchanged config reuses the live client AND
+  // the tool list it already fetched, so a later session registers the same
+  // tools without spawning anything. The client is NOT closed here — it stays
+  // in the pool until it goes idle — which is what makes the second visit to
+  // `/mcp` instant instead of a fresh round of handshakes.
+  const conn = await acquire(entry, {
+    baseCwd: state.baseCwd,
+    idleTimeoutMs: entry.idleTimeoutMs,
+  })
+  if (record.conn !== null && record.conn !== conn) release(record.conn)
+  record.conn = conn
+  const definitions = new Map()
+  const listed = []
+  for (const tool of conn.tools) {
+    const publicName = publicToolName(
+      { serverName: entry.serverName, pluginName: entry.pluginName },
+      tool.name,
+    )
+    if (definitions.has(publicName)) {
+      throw new Error(`server listed tool "${tool.name}" more than once — invalid tool list`)
+    }
+    definitions.set(publicName, createDefinition(state, entry, tool.name, publicName, tool))
+    listed.push({
+      name: publicName,
+      rawName: tool.name,
+      description: typeof tool.description === 'string' ? tool.description : '',
+    })
+  }
+  const disposers = []
+  for (const [publicName, definition] of definitions) {
+    try {
+      disposers.push(state.agentCtx.tools.register(definition))
+    } catch (error) {
+      log(state.ctx, 'error', `agent ${state.agent.id}: registering ${publicName} failed: ${String(error)}`)
+    }
+  }
+  return {
+    tools: listed,
+    unregister: () => {
+      for (const dispose of disposers) {
+        try { dispose() } catch { /* best effort */ }
       }
-      definitions.set(publicName, createDefinition(state, entry, tool.name, publicName, tool))
-      listed.push({
-        name: publicName,
-        rawName: tool.name,
-        description: typeof tool.description === 'string' ? tool.description : '',
-      })
-    }
-    const disposers = []
-    for (const [publicName, definition] of definitions) {
-      try {
-        disposers.push(state.agentCtx.tools.register(definition))
-      } catch (error) {
-        log(state.ctx, 'error', `agent ${state.agent.id}: registering ${publicName} failed: ${String(error)}`)
-      }
-    }
-    return {
-      tools: listed,
-      unregister: () => {
-        for (const dispose of disposers) {
-          try { dispose() } catch { /* best effort */ }
-        }
-      },
-    }
-  } finally {
-    try { await client.close() } catch { /* best effort */ }
+    },
   }
 }
 
@@ -452,7 +492,7 @@ async function setupServer(state, entry) {
   }
 
   try {
-    const { tools, unregister } = await syncSchema(state, entry)
+    const { tools, unregister } = await syncSchema(state, record)
     if (state.disposed) {
       unregister()
       return record
@@ -502,7 +542,7 @@ async function setupHostRow(state, entry, record) {
     return record
   }
   try {
-    const { tools: listed, unregister } = await syncSchema(state, { ...entry, override: true })
+    const { tools: listed, unregister } = await syncSchema(state, record)
     if (state.disposed) {
       unregister()
       return record
@@ -536,10 +576,11 @@ async function teardownServer(state, record, reason) {
   const conn = record.conn
   record.conn = null
   record.connecting = null
-  if (conn !== null && conn !== undefined) {
-    clearIdle(conn)
-    try { await conn.client.close() } catch { /* best effort */ }
-  }
+  // Hand the connection back to the pool rather than closing it: another
+  // session may be using it, and a reload whose config did not change should
+  // get the SAME client back (that is the whole point of the pool). It closes
+  // on its own once idle.
+  if (conn !== null && conn !== undefined) release(conn)
   log(state.ctx, 'info', `agent ${state.agent.id}: server ${record.entry.serverName}: ${reason}`)
 }
 
@@ -559,6 +600,9 @@ async function connectServer(state, key) {
     return { ok: false, code: 'cc-mcp/disabled', message: `server ${record.entry.serverName} is disabled in this workspace — enable it first` }
   }
   await enqueue(state, async () => {
+    // A reconnect must really re-dial, so drop the pooled client first —
+    // otherwise the pool would hand back the very connection being replaced.
+    await invalidate(poolKeyOf(record.entry))
     await teardownServer(state, record, record.entry.hostRow === true ? 'adopting host row' : 'manual reconnect')
     await setupServer(state, record.entry.hostRow === true ? { ...record.entry, adopt: true } : record.entry)
   })
@@ -676,6 +720,24 @@ async function pendingFailures(state) {
 
 // ─── config application (initial load + hot reload share one path) ──────────
 
+/**
+ * Connect up to `limit` servers at a time. Claude Code dials with a bounded
+ * concurrency for the same reason (module-1115.js `ZS(..., { concurrency:
+ * getMcpServerConnectionBatchSize() })`): serially, a session's panel filled in
+ * one row per round-trip, and one slow server delayed every server behind it.
+ */
+async function mapBounded(items, limit, fn) {
+  const queue = [...items]
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, queue.length)) }, async () => {
+    for (;;) {
+      const next = queue.shift()
+      if (next === undefined) return
+      await fn(next)
+    }
+  })
+  await Promise.all(workers)
+}
+
 async function applyConfig(state) {
   if (state.disposed) return
   // The workspace store must be loaded before anything registers, so a server
@@ -686,11 +748,12 @@ async function applyConfig(state) {
   for (const record of [...state.servers.values()]) {
     await teardownServer(state, record, 'config change — rebuilding')
   }
-  for (const entry of entries) {
+  await mapBounded(entries, state.config.connectConcurrency, async (entry) => {
     // setupServer itself answers `disabled` for any key recorded in this
     // workspace's store, host rows included.
+    if (state.disposed) return
     await setupServer(state, entry)
-  }
+  })
   // A server removed from the config must not linger as a stale panel row.
   const live = new Set(entries.map((entry) => serverKey(entry)))
   for (const key of [...state.servers.keys()]) {
@@ -707,16 +770,31 @@ async function reloadFromDisk(state) {
   }
 }
 
-// ─── watcher (project .mcp.json hot reload) ──────────────────────────────────
+// ─── watcher (MCP config hot reload) ─────────────────────────────────────────
+
+/**
+ * Every file whose change alters a session's MCP config: the `.mcp.json` of
+ * each directory on the ancestor chain (project scope) and `~/.claude.json`
+ * (user + local scope). `watchFile` polls, so a file that does not exist yet
+ * starts reporting as soon as it is created.
+ */
+function watchPathsFor(state) {
+  const claudeJson = typeof state.config.claudeJsonPath === 'string' && state.config.claudeJsonPath.trim() !== ''
+    ? state.config.claudeJsonPath
+    : join(state.config.homeDir ?? homedir(), '.claude.json')
+  const paths = fullAncestors(state.baseCwd).map((dir) => join(dir, '.mcp.json'))
+  paths.push(claudeJson)
+  return paths
+}
 
 function attachWatcher(state) {
-  if (!state.config.watchProject || state.projectRoot === undefined) return
-  const root = state.projectRoot
-  let w = projectWatchers.get(root)
+  if (!state.config.watchProject) return
+  const key = String(state.baseCwd)
+  let w = projectWatchers.get(key)
   if (w === undefined) {
-    w = { controllers: new Set(), timer: null }
-    projectWatchers.set(root, w)
-    const configPath = join(root, '.mcp.json')
+    const paths = watchPathsFor(state)
+    w = { controllers: new Set(), timer: null, paths }
+    projectWatchers.set(key, w)
     const onChange = () => {
       if (w.timer !== null) clearTimeout(w.timer)
       w.timer = setTimeout(() => {
@@ -731,10 +809,12 @@ function attachWatcher(state) {
         }
       }, WATCH_DEBOUNCE_MS)
     }
-    try {
-      watchFile(configPath, { interval: 500 }, onChange)
-    } catch (error) {
-      log(state.ctx, 'warn', `watch ${configPath} failed: ${String(error)} — hot reload disabled`)
+    for (const path of paths) {
+      try {
+        watchFile(path, { interval: 500 }, onChange)
+      } catch (error) {
+        log(state.ctx, 'warn', `watch ${path} failed: ${String(error)} — hot reload disabled for it`)
+      }
     }
   }
   w.controllers.add(state)
@@ -748,10 +828,12 @@ function detachWatcher(state) {
   if (w === undefined || w === null) return
   state.watcherRef = undefined
   w.controllers.delete(state)
-  if (w.controllers.size === 0 && state.projectRoot !== undefined) {
+  if (w.controllers.size === 0) {
     if (w.timer !== null) clearTimeout(w.timer)
-    try { unwatchFile(join(state.projectRoot, '.mcp.json')) } catch { /* best effort */ }
-    projectWatchers.delete(state.projectRoot)
+    for (const path of w.paths) {
+      try { unwatchFile(path) } catch { /* best effort */ }
+    }
+    projectWatchers.delete(String(state.baseCwd))
   }
 }
 
@@ -883,7 +965,8 @@ async function handleRpc(ctx, endpoint, payload) {
       version: VERSION,
       manager: { ...manager },
       wiredSessions: [...agentStates.keys()].map(String),
-      projectRoots: [...agentStates.values()].map((entry) => entry.projectRoot ?? null),
+      workspaces: [...agentStates.values()].map((entry) => entry.baseCwd ?? null),
+      pool: poolStats(),
       visibleMcpTools: visible,
     })
   }
@@ -960,11 +1043,7 @@ async function wireAgent(ctx, agent, config) {
     return
   }
   const state = createController(ctx, agent, agentCtx, cwd, config)
-  // home is excluded: `~/.claude` is Claude Code's global dir, not a project.
-  const projectRoot = config.enableProject
-    ? await findProjectRoot(cwd, config.projectRootMarkers, { homeDir: homedir() })
-    : undefined
-  state.projectRoot = projectRoot
+  state.mcpScopes = { shadowed: [], byScope: {}, claudeJson: {} }
   agentStates.set(agent.id, state)
   attachWatcher(state)
   // The self-check runs beside the conversation, never in front of it: the
@@ -1015,6 +1094,10 @@ export function apply(ctx, config) {
     if (config.enableManager) registerManager(ctx, config)
     ctx.effect(() => () => {
       for (const state of [...agentStates.values()]) cleanupState(ctx, state, 'plugin reloaded')
+      // The pool outlives a session by design; on unload it must not outlive the
+      // plugin, or its child processes would keep running with no owner (a hot
+      // reload builds a fresh module with a fresh, empty pool).
+      void drainPool()
       globalStore = null
       globalStoreReady = Promise.resolve([])
       stores.clear()

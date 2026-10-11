@@ -1,80 +1,103 @@
-// loadClaude: assemble the full IR from a cwd (project + global .claude).
+// loadClaude: assemble the full IR for one session directory.
+//
+// Discovery is PER COMPONENT (see scopes.js) — Claude Code has no project root:
+//   skills / commands / agents   bounded ancestors (cwd → home, git root)
+//   rules                        full ancestors, root-first
+//   settings                     fixed: user config dir + <cwd>/.claude
+//   mcp                          user + local (~/.claude.json), plus every
+//                                ancestor's .mcp.json with the nearest winning
+//                                a name clash
+//
+// Markdown components merge in CC's order — policy → user → additional →
+// project (near → far). We have no policy directory and no --add-dir yet, so
+// the order is user, then project near → far. Same-named entries are NOT
+// deduplicated: CC keeps every one and leaves the choice to the consumer.
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { findProjectRoot, findClaudeProjectRoot, collectClaudeDir, discoverRules } from './skills.js'
+import {
+  boundedAncestors, findGitRoot, fullAncestors,
+} from './scopes.js'
+import { collectClaudeDir, discoverRules } from './skills.js'
 import { discoverSettings, mergeSettings } from './settings.js'
 import { parseRulesFor, removedToolNames, classifyComponents } from './classify.js'
 import { STATUS } from './classify.js'
 import { mergeAgentCatalog } from './agents.js'
-import { discoverProjectMcp } from './mcp.js'
+import { discoverMcpScopes } from './mcp.js'
 import { discoverPluginRoot, discoverMarketplace } from './plugin.js'
 
+/** The `.claude` directory a user-scope read is anchored at. */
+function globalClaudeDirOf(opts, homeDir) {
+  const dir = opts.globalClaudeDir ?? join(homeDir, '.claude')
+  return dir === '' || dir === '.claude' ? undefined : dir
+}
+
 /**
- * Load Claude Code `.claude/` assets (project + optional global ~/.claude)
- * into a standalone IR. Pure parse: no writes, no side effects beyond reads.
+ * Load Claude Code `.claude/` assets into a standalone IR.
+ * Pure parse: no writes, no side effects beyond reads.
  * @param {object} [opts]
- * @param {string} opts.cwd - session workspace (project root discovery starts here).
+ * @param {string} opts.cwd - session working directory; the anchor for every
+ *   scope below (settings, the `.mcp.json` walk, the `~/.claude.json` key).
  * @param {string} [opts.homeDir]
- * @param {string[]} [opts.projectRootMarkers]
+ * @param {string} [opts.gitRoot] - pre-resolved repository root (skips a walk).
  * @param {boolean} [opts.enableGlobal=true]
  * @param {string} [opts.globalClaudeDir]
- * @param {number} [opts.projectSkillRank=150]
- * @param {number} [opts.globalSkillRank=160]
+ * @param {string} [opts.claudeJsonPath] - override `~/.claude.json`.
  * @param {string[]} [opts.pluginRoots] - plugin dirs to inventory (M4).
  * @param {string[]} [opts.marketplaceRoots] - marketplace dirs to inventory (M4).
- * @param {number} [opts.pluginSkillRank=170] - plugin component rank (higher
- *   than global 160 so project/global entries win on name clashes).
- * @returns {Promise<object>} IR { cwd, projectRoot, components, warnings, report }
+ * @returns {Promise<object>} IR { cwd, scopes, components, warnings, report }
  */
 export async function loadClaude(opts = {}) {
   const cwd = opts.cwd ?? process.cwd()
   const homeDir = opts.homeDir ?? homedir()
-  const projectSkillRank = opts.projectSkillRank ?? 150
-  const globalSkillRank = opts.globalSkillRank ?? 160
   const warnings = []
+  const gitRoot = opts.gitRoot !== undefined ? opts.gitRoot : await findGitRoot(cwd)
+  const projectDirs = await boundedAncestors(cwd, { homeDir, gitRoot })
+  const ancestors = fullAncestors(cwd)
+  const globalClaudeDir = opts.enableGlobal === false ? undefined : globalClaudeDirOf(opts, homeDir)
 
-  // Project root: explicit projectRootMarkers wins (caller control, e.g.
-  // cc-mcp's configurable markers); otherwise CC semantics — closest
-  // .claude/ directory, falling back to the .git root. Home is excluded
-  // either way: `~/.claude` is the global config dir, not a project's.
-  const projectRoot = opts.projectRootMarkers !== undefined
-    ? await findProjectRoot(cwd, opts.projectRootMarkers, { homeDir })
-    : await findClaudeProjectRoot(cwd, { homeDir })
   const skills = []
   const commands = []
   const rules = []
   const agentRoots = []
 
-  if (projectRoot !== undefined) {
-    const claudeDir = join(projectRoot, '.claude')
-    const dir = await collectClaudeDir(claudeDir, 'project-claude', projectSkillRank, warnings)
-    skills.push(...dir.skills)
-    commands.push(...dir.commands)
-    rules.push(...await discoverRules(join(claudeDir, 'rules'), 'project'))
-    agentRoots.push({ root: join(claudeDir, 'agents'), scope: 'project', rank: projectSkillRank })
+  // Markdown components, in CC's merge order: user first, then project
+  // near → far. Every contributing directory is read; nothing shadows anything.
+  const markdownRoots = []
+  if (globalClaudeDir !== undefined) markdownRoots.push({ claudeDir: globalClaudeDir, source: 'user-claude' })
+  for (const dir of projectDirs) markdownRoots.push({ claudeDir: join(dir, '.claude'), source: 'project-claude' })
+
+  for (const { claudeDir, source } of markdownRoots) {
+    const collected = await collectClaudeDir(claudeDir, { source, warnings })
+    skills.push(...collected.skills)
+    commands.push(...collected.commands)
+    agentRoots.push({
+      root: join(claudeDir, 'agents'),
+      scope: source === 'user-claude' ? 'global' : 'project',
+      baseDir: claudeDir,
+    })
   }
 
-  if (opts.enableGlobal !== false) {
-    const globalDir = opts.globalClaudeDir ?? join(homeDir, '.claude')
-    if (globalDir !== '' && globalDir !== '.claude') {
-      const dir = await collectClaudeDir(globalDir, 'user-claude', globalSkillRank, warnings)
-      skills.push(...dir.skills)
-      commands.push(...dir.commands)
-      rules.push(...await discoverRules(join(globalDir, 'rules'), 'user'))
-      agentRoots.push({ root: join(globalDir, 'agents'), scope: 'global', rank: globalSkillRank })
-    }
+  // Rules walk the FULL ancestor chain, root-first (CC :76362 + :76364), with
+  // the user dir ahead of every project dir — the same order CC builds.
+  if (globalClaudeDir !== undefined) {
+    rules.push(...await discoverRules(join(globalClaudeDir, 'rules'), {
+      source: 'user',
+      baseDir: globalClaudeDir,
+    }))
+  }
+  for (const dir of ancestors.slice().reverse()) {
+    const claudeDir = join(dir, '.claude')
+    rules.push(...await discoverRules(join(claudeDir, 'rules'), { source: 'project', baseDir: claudeDir }))
   }
 
-  // Agents: merge project + global into one catalog (project wins on name clash).
-  // mergeAgentCatalog reports into the array it was handed, so there is nothing
-  // to merge back — repeating that push duplicated every agent warning.
+  // Agents: one catalog, unique names (see mergeAgentCatalog for the order).
   const catalog = await mergeAgentCatalog(agentRoots, warnings)
 
-  // Permissions: discover the three settings files and merge.
+  // Permissions: settings live at fixed locations anchored on cwd.
   const discovered = await discoverSettings(cwd, {
     homeDir,
-    ...(opts.projectRootMarkers !== undefined ? { projectRootMarkers: opts.projectRootMarkers } : {}),
+    ...(opts.globalClaudeDir !== undefined ? { globalClaudeDir: opts.globalClaudeDir } : {}),
   })
   const merged = mergeSettings(discovered)
   const parsed = parseRulesFor(merged)
@@ -94,16 +117,26 @@ export async function loadClaude(opts = {}) {
     statusLine: merged.statusLine,
     outputStyle: merged.outputStyle,
     enableAllProjectMcpServers: merged.enableAllProjectMcpServers,
+    enabledMcpjsonServers: merged.enabledMcpjsonServers,
+    disabledMcpjsonServers: merged.disabledMcpjsonServers,
     sources: merged.sources,
   }
 
-  // MCP servers: project-root .mcp.json (CC project-level config).
-  const mcp = { servers: [], sources: [] }
-  if (projectRoot !== undefined) {
-    const found = await discoverProjectMcp(projectRoot, { warn: (m) => warnings.push(m) })
-    mcp.servers.push(...found.servers)
-    mcp.sources.push(...found.sources)
-    warnings.push(...found.warnings)
+  // MCP servers: the scopes we read (user / local / project), effective set
+  // plus the entries a nearer or more authoritative scope shadowed.
+  const mcpFound = await discoverMcpScopes(cwd, {
+    homeDir,
+    gitRoot,
+    ...(opts.claudeJsonPath !== undefined ? { claudeJsonPath: opts.claudeJsonPath } : {}),
+    warn: (m) => warnings.push(m),
+  })
+  warnings.push(...mcpFound.warnings)
+  const mcp = {
+    servers: mcpFound.servers,
+    shadowed: mcpFound.shadowed,
+    byScope: mcpFound.byScope,
+    sources: mcpFound.sources,
+    claudeJson: mcpFound.claudeJson,
   }
 
   // LSP servers: plugin-root .lsp.json — discovered by the plugin scanner
@@ -118,9 +151,8 @@ export async function loadClaude(opts = {}) {
   // namespacing themselves.
   const plugins = []
   const marketplaces = []
-  const pluginSkillRank = opts.pluginSkillRank ?? 170
   for (const root of opts.pluginRoots ?? []) {
-    const plugin = await discoverPluginRoot(root, { skillRank: pluginSkillRank, warn: (m) => warnings.push(m) })
+    const plugin = await discoverPluginRoot(root, { warn: (m) => warnings.push(m) })
     warnings.push(...plugin.warnings)
     plugins.push(plugin)
   }
@@ -143,7 +175,19 @@ export async function loadClaude(opts = {}) {
     unsupported: [], // future: workflows/monitors/themes/bin classification lands here
   }
 
-  const ir = { cwd, projectRoot, components, warnings }
+  const ir = {
+    cwd,
+    scopes: {
+      gitRoot,
+      homeDir,
+      project: projectDirs,   // bounded ancestors: skills/commands/agents
+      ancestors,              // full ancestors: rules, .mcp.json
+      globalClaudeDir,
+      claudeJsonKey: mcpFound.claudeJson.key,
+    },
+    components,
+    warnings,
+  }
   ir.report = classifyComponents(ir)
   return ir
 }
@@ -151,7 +195,7 @@ export async function loadClaude(opts = {}) {
 /**
  * Load only the permission slice (settings.json → merged → parsed rules).
  * Cheaper than loadClaude; used by the permission gate on every tool call.
- * @returns {Promise<object>} { cwd, projectRoot, permissions, warnings }
+ * @returns {Promise<object>} { cwd, permissions, warnings }
  */
 export async function loadPermissions(opts = {}) {
   const cwd = opts.cwd ?? process.cwd()
@@ -159,7 +203,7 @@ export async function loadPermissions(opts = {}) {
   const warnings = []
   const discovered = await discoverSettings(cwd, {
     homeDir,
-    ...(opts.projectRootMarkers !== undefined ? { projectRootMarkers: opts.projectRootMarkers } : {}),
+    ...(opts.globalClaudeDir !== undefined ? { globalClaudeDir: opts.globalClaudeDir } : {}),
   })
   const merged = mergeSettings(discovered)
   const parsed = parseRulesFor(merged)
@@ -179,7 +223,9 @@ export async function loadPermissions(opts = {}) {
     statusLine: merged.statusLine,
     outputStyle: merged.outputStyle,
     enableAllProjectMcpServers: merged.enableAllProjectMcpServers,
+    enabledMcpjsonServers: merged.enabledMcpjsonServers,
+    disabledMcpjsonServers: merged.disabledMcpjsonServers,
     sources: merged.sources,
   }
-  return { cwd, projectRoot: discovered.projectRoot, permissions, warnings }
+  return { cwd, permissions, warnings }
 }

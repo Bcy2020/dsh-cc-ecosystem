@@ -13,7 +13,7 @@
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
-import { loadPermissions, evaluateCall, sessionEvents } from 'dsh-cc-loader'
+import { loadPermissions, evaluateCall, sessionEvents, discoverProjectMcp, projectMcpApproval } from 'dsh-cc-loader'
 import { decideApproval } from './approval.js'
 
 export const name = 'cc-permissions'
@@ -31,8 +31,19 @@ export const Config = z.object({
   // still reach the human answerer.
   autoApproveAllowed: z.boolean().default(true),
   homeDir: z.string(),
-  projectRootMarkers: z.array(z.string()).default(['.git', '.claude']),
 })
+
+/**
+ * `mcp__<server>__<tool>` → `<server>`. Plugin MCP tools carry the
+ * `mcp__plugin_…` namespace and are never project-scope, so they fall out on
+ * their own (no plugin server name matches a project `.mcp.json`).
+ */
+function mcpServerOfTool(toolName) {
+  if (typeof toolName !== 'string' || !toolName.startsWith('mcp__')) return undefined
+  const rest = toolName.slice('mcp__'.length)
+  const sep = rest.indexOf('__')
+  return sep < 0 ? undefined : rest.slice(0, sep)
+}
 
 export function apply(ctx, config = {}) {
   if (config.enabled === false) return
@@ -56,12 +67,22 @@ export function apply(ctx, config = {}) {
       if (!changed) return hit
       cache.delete(cwd)
     }
-    const loaded = await loadPermissions({ cwd, homeDir, projectRootMarkers: config.projectRootMarkers })
+    const loaded = await loadPermissions({ cwd, homeDir })
+    // Project-scope MCP servers are gated (see the pre-execute listener). Their
+    // names come from the ancestor `.mcp.json` walk, which is a handful of
+    // stats — unlike `~/.claude.json`, which is large and not read here.
+    const projectMcp = await discoverProjectMcp(cwd)
     const sources = (loaded.permissions.sources ?? []).map((src) => ({ path: src.path, mtimeMs: 0 }))
+    for (const path of projectMcp.sources) sources.push({ path, mtimeMs: 0 })
     for (const src of sources) {
       try { src.mtimeMs = (await stat(src.path)).mtimeMs } catch { /* keep 0 → always reload */ }
     }
-    const entry = { ...loaded, sources, at: Date.now() }
+    const entry = {
+      ...loaded,
+      sources,
+      projectMcpServers: new Set(projectMcp.servers.map((s) => s.serverName)),
+      at: Date.now(),
+    }
     cache.set(cwd, entry)
     return entry
   }
@@ -77,13 +98,12 @@ export function apply(ctx, config = {}) {
     }
     const perm = loaded.permissions
     if (perm === undefined) return next()
-    // Proceed when there are rules to fold OR when the MCP auto-approve toggle
-    // is on (it is meaningful even with an otherwise-empty settings file).
-    if (perm.status !== 'DIRECT' && perm.enableAllProjectMcpServers !== true) return next()
+    // Proceed when there are rules to fold OR when a project `.mcp.json` server
+    // is in play — the approval gate below applies even with no settings file.
+    if (perm.status !== 'DIRECT' && loaded.projectMcpServers.size === 0) return next()
     const result = evaluateCall(perm.parsed, { tool: exec.name, args: exec.arguments }, {
       cwd: loaded.cwd,
       homeDir,
-      projectRoot: loaded.projectRoot,
     })
     if (result.decision === 'deny') {
       ctx.logger.info(`cc-permissions: DENY ${exec.name} (cwd=${cwd}) — ${result.reason}`)
@@ -93,15 +113,35 @@ export function apply(ctx, config = {}) {
       ctx.logger.info(`cc-permissions: ASK ${exec.name} (cwd=${cwd}) — ${result.reason}`)
       return { kind: 'ask', reason: result.reason ?? 'A Claude Code permission rule requests confirmation.' }
     }
-    // CC settings `enableAllProjectMcpServers: true` auto-approves tools from
-    // PROJECT MCP servers (mcp__<server>__<tool>); plugin MCP tools keep their
-    // mcp__plugin_ namespace and are NOT covered. Slots in at the bottom of
-    // the deny → ask → allow fold: explicit deny/ask rules still win.
-    if (result.decision === 'none'
-      && perm.enableAllProjectMcpServers === true
-      && exec.name.startsWith('mcp__') && !exec.name.startsWith('mcp__plugin_')) {
-      ctx.logger.info(`cc-permissions: ALLOW ${exec.name} (cwd=${cwd}) — enableAllProjectMcpServers=true auto-approves project MCP tools`)
-      return { kind: 'allow', reason: 'enableAllProjectMcpServers=true auto-approves project MCP server tools.' }
+    // ── `.mcp.json` servers are DEFAULT-OPEN (deliberate deviation from CC) ───
+    // Claude Code refuses a project-scope server until the user approves it
+    // (`FXt` → "project-approval", module-0316.js:61401) and prompts for that
+    // approval interactively. DSH has no such prompt, so copying the gate would
+    // leave every server a project `.mcp.json` declares permanently unusable —
+    // visible in the panel, dead on every call, with no way to say yes. The
+    // policy here is the inverse: a project MCP tool runs unless settings
+    // explicitly REJECT it.
+    //
+    //   disabledMcpjsonServers      → the call is refused
+    //   enabledMcpjsonServers /     → still read, still recorded as "approved"
+    //   enableAllProjectMcpServers    (they decide nothing here any more)
+    //   neither                     → the call runs
+    //
+    // The approval/request seam below keeps the stricter reading: only an
+    // explicit approval silences a request, so a sandbox escalation on an MCP
+    // tool still reaches the human. This is the counterpart of cc-mcp's own
+    // disable list, which instead keeps a server out of the listing entirely
+    // (D4: two different kinds of "no").
+    if (result.decision === 'none') {
+      const server = mcpServerOfTool(exec.name)
+      if (server !== undefined && loaded.projectMcpServers.has(server)
+        && projectMcpApproval(server, perm) === 'rejected') {
+        ctx.logger.info(`cc-permissions: DENY ${exec.name} (cwd=${cwd}) — project MCP server "${server}" is rejected by settings`)
+        return {
+          kind: 'deny',
+          reason: `Claude Code settings reject the project MCP server "${server}" (disabledMcpjsonServers).`,
+        }
+      }
     }
     return next()
   })
@@ -131,15 +171,19 @@ export function apply(ctx, config = {}) {
         }
         const perm = loaded.permissions
         if (perm === undefined) return next()
-        if (perm.status !== 'DIRECT' && perm.enableAllProjectMcpServers !== true) return next()
+        if (perm.status !== 'DIRECT' && loaded.projectMcpServers.size === 0) return next()
         const decision = decideApproval({
           events,
           callId: req.callId,
           toolName: req.toolName,
           parsed: perm.parsed,
-          env: { cwd: loaded.cwd, homeDir, projectRoot: loaded.projectRoot },
-          enableAllProjectMcpServers: perm.enableAllProjectMcpServers === true,
-          isProjectMcpTool: (name) => name.startsWith('mcp__') && !name.startsWith('mcp__plugin_'),
+          env: { cwd: loaded.cwd, homeDir },
+          isApprovedProjectMcpTool: (name) => {
+            const server = mcpServerOfTool(name)
+            return server !== undefined
+              && loaded.projectMcpServers.has(server)
+              && projectMcpApproval(server, perm) === 'approved'
+          },
         })
         if (decision === 'allow') {
           ctx.logger.info(`cc-permissions: AUTO-APPROVE ${req.toolName}${req.callId !== undefined ? ` call ${req.callId}` : ''} — matched a CC allow rule`)

@@ -37,17 +37,13 @@ export const Config = z.object({
   enableRunInBackground: z.boolean().default(true),
   /** Absolute delegation-depth cap (default 3). */
   maxDepth: z.natural().max(Number.MAX_SAFE_INTEGER).default(3),
-  projectRootMarkers: z.array(z.string()).default(['.git', '.claude']),
   enableGlobal: z.boolean().default(true),
   globalClaudeDir: z.string(),
   homeDir: z.string(),
-  projectAgentRank: z.number().default(150),
-  globalAgentRank: z.number().default(160),
   // ── plugin roots (M4c) ────────────────────────────────────────────────────
   // Plugin agents are exposed as `plugin-<plugin>-<name>` (DSH skill-name
   // grammar is strict kebab-case; CC's `<plugin>:<name>` colon does not fit).
   pluginRoots: z.array(z.string()).default([]),
-  pluginAgentRank: z.number().default(170),
   /**
    * CC frontmatter model names → DSH model names. CC agents name Claude
    * models (sonnet/opus/…), which this deployment cannot resolve; without an
@@ -64,13 +60,9 @@ export function apply(ctx, config = {}) {
   const loaderOpts = () => ({
     cwd: process.cwd(), // replaced per call
     homeDir,
-    projectRootMarkers: config.projectRootMarkers,
     enableGlobal: config.enableGlobal,
     globalClaudeDir: config.globalClaudeDir,
-    projectSkillRank: config.projectAgentRank,
-    globalSkillRank: config.globalAgentRank,
     pluginRoots: config.pluginRoots,
-    pluginSkillRank: config.pluginAgentRank,
   })
 
   ctx.logger.info(`cc-agents: registered (delegation via ${config.provider}, catalog injection ${config.injectCatalog !== false ? 'on' : 'off'})`)
