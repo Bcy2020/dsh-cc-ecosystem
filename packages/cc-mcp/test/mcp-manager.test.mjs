@@ -200,7 +200,7 @@ test('createDisabledStore: unreadable file warns and starts empty', async () => 
 
 /**
  * Drive the plugin's registered route the way the Web server does: a POST with
- * a JSON body, same-origin headers, and a captured response.
+ * a JSON body, the browser half's own headers, and a captured response.
  */
 async function invokeRoute(route, endpoint, payload, options = {}) {
   const body = typeof options.rawBody === 'string' ? options.rawBody : JSON.stringify(payload ?? {})
@@ -210,6 +210,7 @@ async function invokeRoute(route, endpoint, payload, options = {}) {
     headers: {
       host: options.host ?? '127.0.0.1:3080',
       origin: options.origin ?? 'http://127.0.0.1:3080',
+      'x-cc-mcp': '1',
       ...(options.headers ?? {}),
     },
     async *[Symbol.asyncIterator]() { yield Buffer.from(body) },
@@ -643,15 +644,30 @@ test('route: exposes diagnostics and answers GET without a body', async () => {
   } finally { await h.cleanup() }
 })
 
-test('route: refuses cross-origin POSTs and rejects malformed requests', async () => {
+test('route: only the panel’s own caller may POST, and malformed requests are rejected', async () => {
   const h = await harness({ echo: { command: process.execPath, args: [ECHO_SERVER] } })
   try {
+    // An ordinary web host: a browser sends Origin, so a cross-site one is
+    // refused outright.
     const crossOrigin = await h.send('state', { sessionId: 'session-1' }, { origin: 'http://evil.example' })
     assert.equal(crossOrigin.status, 403)
     assert.equal(crossOrigin.body.error.code, 'cc-mcp/untrusted-origin')
 
-    const noOrigin = await h.send('state', { sessionId: 'session-1' }, { origin: undefined, headers: { origin: '' } })
-    assert.equal(noOrigin.status, 403, 'a POST without an Origin is refused')
+    // The desktop shell serves the GUI from `dsh-app://app/…`, where Chromium
+    // sends NO Origin at all. Every panel call looks like this, and requiring an
+    // Origin refused all of them — the regression this test guards.
+    const shell = await h.send('state', { sessionId: 'session-1' }, { origin: undefined, headers: { origin: '' } })
+    assert.equal(shell.status, 200, 'the desktop shell, which sends no Origin, is accepted')
+    assert.equal(shell.body.ok, true)
+
+    // …but only with the header the browser half sets on every call. Cross-site
+    // a fetch cannot set it (the preflight is never granted) and a form cannot
+    // set it at all, so its absence means the request is not ours.
+    const noHeader = await h.send('state', { sessionId: 'session-1' }, { headers: { 'x-cc-mcp': '' } })
+    assert.equal(noHeader.status, 403, 'a POST without the caller header is refused')
+
+    const noHeaderNoOrigin = await h.send('state', { sessionId: 'session-1' }, { origin: undefined, headers: { origin: '', 'x-cc-mcp': '' } })
+    assert.equal(noHeaderNoOrigin.status, 403, 'a missing Origin is on its own no reason to trust')
 
     // A well-formed path naming no endpoint answers an error envelope, so the
     // panel can render it instead of hitting a bare HTTP failure.

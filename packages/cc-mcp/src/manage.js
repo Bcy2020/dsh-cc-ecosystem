@@ -286,13 +286,39 @@ export function sendJson(response, status, payload) {
   response.end(JSON.stringify(payload))
 }
 
-/** True when the request's Origin matches its Host — required on every POST. */
-function sameOrigin(request) {
-  const origin = request.headers?.origin
-  const host = request.headers?.host
-  if (typeof origin !== 'string' || typeof host !== 'string') return false
+/**
+ * The header the browser half sets on every call — keep in step with
+ * `client/index.js`, which is a classic script and cannot import it.
+ */
+const CALLER_HEADER = 'x-cc-mcp'
+
+/**
+ * True when the caller is this plugin's own browser half.
+ *
+ * The desktop shell serves the GUI from its own scheme (`dsh-app://app/…`) and
+ * Chromium sends **no** `Origin` header on those requests, so an Origin/Host
+ * comparison refuses every legitimate call — that is what made `/mcp` report
+ * "the request Origin does not match its Host" on the desktop build, while the
+ * same route answered fine over http.
+ *
+ * The defence that holds in its place is the custom header the client sets: a
+ * cross-site `fetch` cannot set it without a CORS preflight this server never
+ * grants, and a cross-site `<form>` cannot set it at all. A request that does
+ * carry an `Origin` must still match the Host, so an ordinary web host keeps
+ * both checks.
+ *
+ * @param {import('node:http').IncomingMessage} request
+ * @returns {boolean}
+ */
+function trustedCaller(request) {
+  const headers = request.headers ?? {}
+  if (headers[CALLER_HEADER] !== '1') return false
+  const origin = headers.origin
+  // Absent (the desktop shell, a CLI caller) or opaque (`null`, a sandboxed
+  // frame) origins carry nothing to compare — the header above is the check.
+  if (typeof origin !== 'string' || origin === '' || origin === 'null') return true
   try {
-    return new URL(origin).host === host
+    return typeof headers.host === 'string' && new URL(origin).host === headers.host
   } catch {
     return false
   }
@@ -335,8 +361,8 @@ export function createRouteHandler(options) {
         response.end()
         return
       }
-      if (method === 'POST' && !sameOrigin(request)) {
-        sendJson(response, 403, rpcFail('cc-mcp/untrusted-origin', 'the request Origin does not match its Host'))
+      if (method === 'POST' && !trustedCaller(request)) {
+        sendJson(response, 403, rpcFail('cc-mcp/untrusted-origin', 'the request did not come from this plugin’s own panel'))
         return
       }
       let payload = {}
