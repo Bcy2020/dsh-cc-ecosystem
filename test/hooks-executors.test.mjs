@@ -575,7 +575,7 @@ test('apply(): http/mcp_tool/prompt/agent hooks fire through runPoint dispatch',
     }
     const ctx = makeCtx()
     ctx.get = (n) => (n === 'tools' ? tools : n === 'llm' ? llm : undefined)
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
 
     const agent = makeAgent(project)
     await ctx._listeners['agent/session-start']({ agent, source: 'startup' })

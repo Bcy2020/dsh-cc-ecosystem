@@ -96,24 +96,31 @@ test('decideApproval: no rules defers', () => {
   assert.equal(decideApproval({ events: EVENTS, callId: 'c1', toolName: 'bash', parsed, env: ENV }), 'defer')
 })
 
-// ─── decideApproval: enableAllProjectMcpServers ─────────────────────────────
+// ─── decideApproval: project MCP tools ──────────────────────────────────────
+//
+// The pre-execute gate is default-open, but this seam is not: only an EXPLICIT
+// approval silences a request, so a sandbox escalation on an MCP tool still
+// reaches the human.
 
-test('decideApproval: project MCP tool auto-approved under enableAllProjectMcpServers', () => {
+test('decideApproval: an explicitly APPROVED project MCP tool is auto-allowed on no-rule', () => {
   const parsed = rules()
-  const isProjectMcp = (name) => name.startsWith('mcp__') && !name.startsWith('mcp__plugin_')
+  const approved = (name) => name.startsWith('mcp__filesys__')
   assert.equal(decideApproval({
     events: EVENTS, callId: 'c3', toolName: 'mcp__filesys__list', parsed, env: ENV,
-    enableAllProjectMcpServers: true, isProjectMcpTool: isProjectMcp,
+    isApprovedProjectMcpTool: approved,
   }), 'allow')
   assert.equal(decideApproval({
     events: EVENTS, callId: 'c4', toolName: 'mcp__plugin_myplugin_mysrv__tool', parsed, env: ENV,
-    enableAllProjectMcpServers: true, isProjectMcpTool: isProjectMcp,
-  }), 'defer', 'plugin MCP tools are not covered')
+    isApprovedProjectMcpTool: approved,
+  }), 'defer', 'a plugin MCP tool is never an approved project server')
 })
 
-test('decideApproval: flag off defers', () => {
+test('decideApproval: a project MCP tool that is not explicitly approved defers', () => {
   const parsed = rules()
-  assert.equal(decideApproval({ events: EVENTS, callId: 'c3', toolName: 'mcp__filesys__list', parsed, env: ENV }), 'defer')
+  assert.equal(decideApproval({
+    events: EVENTS, callId: 'c3', toolName: 'mcp__filesys__list', parsed, env: ENV,
+    isApprovedProjectMcpTool: () => false,
+  }), 'defer')
 })
 
 // ─── decideApproval: malformed inputs defer ─────────────────────────────────

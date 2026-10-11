@@ -9,6 +9,126 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.4.0 — 发现层重做:按 Claude Code 的逐组件作用域,不再有「项目根」
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.4.0**,
+`cc-permissions` **0.5.0**。
+
+> **参考了 Claude Code 的实现进行了变更。** 这一版把发现层的行为**整体对齐 Claude Code**(对着内联在 CLI 2.1.275 里的源码逐条核对),
+> 所以有多处**已有配置的含义会改变** —— 见下面「破坏性变更」。凡是 Claude Code 有明确做法的地方都照抄,**包括它的不一致**(技能类走到 git 根、
+> 规则却走整条祖先链),没有为了「更一致」去统一。
+
+- **根因:`/mcp` 面板空白,副标题还显示一个假的 `C:\`** —— 我们从一开始就在实现一个 **Claude Code 里不存在的概念:「项目根」**
+  (`cc-loader/src/skills.js` 的 `findProjectRoot` / `findClaudeProjectRoot`,五个包共用)。它的假设是「所有 `.claude` 资产都从
+  同一个根往上累积」,而实际上:
+  - 技能 / 命令 / 子代理在 **git 根**就停了,**不是**文件系统根;
+  - 项目 / 本地的 `settings.json` 锚在 **cwd**;
+  - MCP 的 **user / local 作用域根本不在项目目录里**,而在 `~/.claude.json` —— 我们的 `mcp.js` 从来没读过这个文件。
+    (实测:本机 `~/.claude.json` 顶层有 6 个 server,旧版**一个都没注册**;这就是面板空白的直接原因。)
+- **改成 Claude Code 的逐组件模型**([`packages/cc-loader/src/scopes.js`](packages/cc-loader/src/scopes.js) 新增)。三种走查,各组件各自声明用哪种:
+
+  | 走查 | 组件 | 边界 |
+  |---|---|---|
+  | **有界祖先** | 技能、命令、子代理、output-styles、workflows | cwd → 家目录(**不含**)/ git 根(**含**),先到者止;不在仓库里就一直走到家目录下方 |
+  | **全链祖先** | `.claude/rules/**` 与 `.mcp.json`(project) | cwd → 文件系统根,**不含根本身**;规则**根在前**,`.mcp.json` **近的覆盖远的** |
+  | **固定位置** | `settings.json` / `settings.local.json` | 用户目录 + **`<cwd>/.claude/`** |
+  | **文件作用域** | MCP 的 user / local | `~/.claude.json` 顶层,以及 `projects["<键>"]` |
+
+  `.mcp.json` 的 project 走查用的是**全链祖先**,这与技能类的「有界祖先」不同 —— 这是 Claude Code 本身的行为,照抄。
+
+- **MCP 现在读三个作用域**(`~/.claude.json` 的 user / local,加上各层祖先的 `.mcp.json` 与插件内联),
+  查找优先级照抄 Claude Code 的 `enterprise > managed > local > project > user`(组织级那两个我们**不读**,它们在系统目录里)。
+
+- **project 作用域的 MCP server:默认放行 —— 这里我们「有意偏离」Claude Code。** Claude Code 对 project 作用域的 MCP server 有批准闸
+  (未批准时 server 看得见、调用失败),并且会**交互式弹窗**问你批不批。DSH 没有这个弹窗,照抄的结果是
+  **`.mcp.json` 里声明的 server 永远不可用** —— 面板里列着、每次调用都被拒、而且没有任何地方能说「可以」。所以政策反过来:
+  **只有 settings 显式拒绝才拦**。
+
+  | `.claude/settings.json` | 效果 |
+  |---|---|
+  | `disabledMcpjsonServers: ["<server>"]` | 该 server 的工具调用被拒 |
+  | `enabledMcpjsonServers` / `enableAllProjectMcpServers` | 仍会读取、仍会上报,但**不再决定任何事** |
+  | 都没有 | 照常运行 |
+
+  user / local / 插件作用域完全不受影响。唯一保留严格读法的是 **approval 缝隙**:MCP 工具引发的 approval 请求(如沙箱提权)
+  只有在**显式批准**时才会被自动应答,否则照旧问你 —— 这条没有跟着放宽。
+  这与 `dsh-cc-mcp` 自己的 disable 是**两种不同的「不」**,别混淆:
+  - **settings 拒绝**(cc-permissions):agent **看得见**,调用被拒;
+  - **我们的 disable**(用户在面板里关掉,存状态文件):agent **直接看不到**,不进列表。
+
+- **面板**:不再显示项目根(那个概念没有了)。列表副标题改成**各作用域的数量**(`user 6 · project 2`),
+  点进任一 server 的详情会显示 **它读自哪个作用域、哪个文件**(如 `User scope · C:\Users\…\.claude.json`),
+  这正是排查「我配的 server 为什么没生效」需要的那一条信息。
+
+- **MCP 连接改为按 (server, 配置) 池化,并且并行拨号** —— 这两条都是照 Claude Code 抄的,修的是同一类体感问题:
+  - **`/mcp` 要等、而且一行一行地冒出来**:旧实现 `applyConfig` 是 `for … await` 串行拨号,一个慢 server 拖住后面所有;
+    而且每次列工具都 `client.close()`,`syncSchema` 列完就断开,**没有任何缓存** —— 所以**每个新会话都把全部 server 重拨一遍**。
+    现在**并行**(`connectConcurrency`,默认 8,CC 同样有并发上限),行几乎同时落定。
+  - **换个工作区再来一次 `/mcp` 又要等**:现在有**进程级连接池**,键是 `(作用域+名字+插件, 连接相关配置)`。
+    配置没变 → 直接复用**已有 client 和已取到的工具列表**,不重新 spawn、不重新握手、不重新 `tools/list`;
+    配置变了 → 是不同的身份,才新拨一个(旧的闲置后自动关闭)。
+    这正是 Claude Code 的做法:它按配置相等性协调(`areMcpConfigsEqual` 为假才 `clearServerCache` 重拨),
+    缓存活在进程里,所以它在访问过的项目里再开 `/mcp` 也是秒开。
+  - 生命周期:闲置 `idleTimeoutMs`(默认 5 分钟)后关闭;server 自己断开时立刻丢弃;手动 **Reconnect** 强制重拨;
+    **插件卸载/热重载时排空整个池**(热重载会建一个全新的 `?v=` 模块实例,旧池再也够不着,不排空就会漏掉子进程)。
+  - **一处继承自 CC 的取舍**:spawn 的 `cwd` **不参与身份**,所以 stdio server 用的是**首次拨号那个会话**的工作目录。
+    只有 server 配置里写了显式 `cwd` 才会区分两个 server。如果你的 server 依赖相对路径读工作区文件,请显式写 `cwd`。
+
+- **`rank` 数字(150 / 160 / 170)整体废弃** —— Claude Code 没有数值优先级,**顺序就是语义**。`cc-skills` 仍然要给 DSH 提供 rank,
+  但改为**按合并列表里的位置生成**(基准值可用 `skillRank` 调),不再按「项目 / 全局 / 插件」写死三个数字。
+
+- **rules 注入的标题从 `# claudeMd` 改成 `# claudeRules`** —— 标题是我们借用 Claude Code 的,而 DSH 原生也会为真正的 `CLAUDE.md` 输出一个
+  `# claudeMd`;同一个上下文里出现两个同名块会被读成一段自相矛盾的内容。
+
+- **顺带修掉的两处**(同一段代码里撞出来的,不修就是新的错):
+  - `anchorBase`(权限规则里前导 `/` 的路径锚点):原来兜底到 `env.projectRoot`,项目根一没有它就自然落到 `cwd`。锚点本就是
+    「settings 文件所在的那个根」—— 用户级是 `~/.claude`,项目 / 本地是 `<cwd>`。
+  - settings 里**标量键的取值顺序**:原来按 `user → project → local` 取第一个出现的值,于是**用户级反而盖过项目级 / 本地级**,
+    与 Claude Code 的 `managed > CLI > local > project > user` 相反。现在按**实际优先级**取。
+
+### 破坏性变更(升级前请读)
+
+1. **`projectRootMarkers` 配置项从五个包里删除。** 没有项目根可标记了。配了它的 profile 需要**删掉这一项**,否则配置校验会报未知字段。
+2. **项目 / 本地的 `settings.json`、`settings.local.json` 与 hooks 只从 `<cwd>/.claude/` 读,不再向上找。**
+   这是 Claude Code 的行为(`module-0045.js` 把 project/local settings 解析到 `ue(n.cwd)`),但它意味着
+   **从子目录启动的会话拿不到仓库根的 settings 与 hooks**。如果你的习惯是从子目录起会话,把配置放到该目录,或改用用户级 `~/.claude/`。
+3. **项目 `hooks.json` 同理**:`<cwd>/.claude/hooks/hooks.json`,不再是 `<项目根>/…`。
+4. **`dsh-cc-mcp` 的状态文件位置变了**:从 `<项目根>/.dsh/cc-mcp-state.json` 改为
+   **`<该会话的启动工作区>/.dsh/cc-mcp-state.json`**。会话没有工作区时才落到机器级文件。(注:「会话的工作区」不是 DSH 进程的启动目录 ——
+   后者是所有会话共用的,粒度不对。)旧位置里的启停决定**不会自动搬过来**,需要在新位置重新关一次。
+5. **配置项 `globalSkillRank` / `globalSkillSource` / `skillSource` / `projectAgentRank` / `globalAgentRank` / `pluginAgentRank` /
+   `pluginSkillRank` 删除**(其中几个此前已无人读取)。同类技能的先后现在由位置决定。
+6. **权限规则里前导 `/` 的路径锚点**(`Read(/secrets/**)` 这类)对项目 / 本地规则**改为 `<cwd>`**。若你依赖「它等于项目根」的旧含义,
+   请检查这些规则。
+
+> **诚实标注**:这一条锚点的 CC 出处**我没能确证到具体行** —— 早先记下的 `module-0316.js:38631` 经核对是**沙箱 `additionalDirectories` 的解析代码,
+> 不是权限规则锚点**。当前按「settings 文件所在的那个根」推理落地(用户级 `~/.claude`,项目 / 本地 `<cwd>`,与项目 / 本地 settings 的固定位置一致),
+> 旁证是 `module-0045.js:463` 描述的同类路径解析规则。若你在 CC 里实测到别的行为,告诉我,改回去很快。
+
+> **`v0.3.4` 那版「把 `.claude` 当作项目根标记」的做法被本版取代。** 那一版是在错模型上打的补丁(为了让没有 git 仓库的项目也能定位到根);
+> 现在没有「根」可定位了,所以 `projectRootMarkers` 连同那个补丁一起删除。
+
+### 保留与未做
+
+- **保留**:权限规则求值(`classify.js`)、规则语法(`parse-rule.js` / `patterns.js`)、插件与 marketplace 扫描(`plugin.js`)。
+  本次只重写发现层。
+- **未做**:auto-memory(`MEMORY.md` + `memory/*.md`)与 `CLAUDE.md` 家族 —— **DSH 官方已经原生支持 `CLAUDE.md`**,
+  我们再注入一遍会**注入两次**。`.claude/rules` 是独立的一类,不受此影响,继续由我们注入(并已升级到全链祖先)。
+- **MCP 的 enterprise / managed 作用域不读**(系统目录,DSH 没有对应的部署场景),但查找优先级照抄,以保持行为一致。
+
+### 测试
+
+- 全仓库 **373 例**。新增 [`test/scopes.test.mjs`](test/scopes.test.mjs)(21 例)逐个钉住三种走查的**边界**,
+  其中一例专门证明**两种走查的差异**:同一个 `.claude` 目录在 git 根之上时,**规则读得到、技能读不到**。
+- 新增 [`packages/cc-mcp/test/connection-pool.test.mjs`](packages/cc-mcp/test/connection-pool.test.mjs)(8 例)钉住连接池的契约:
+  配置不变**只拨一次**、配置变了才新拨、作用域进身份、**spawn 的 cwd 不进身份**、`invalidate` 后真重拨、
+  闲置自关、**有调用在飞时不被闲置定时器关掉**、卸载排空。每一条都用 **server 自己记的 pid** 断言「没有第二次 spawn」——
+  是观测到的,不是假设的(为此给 echo fixture 加了一个可选的 pid 记录,不设环境变量时不写任何东西)。
+- 旧的 `test/project-root.test.mjs` 整卷测的是被删除的函数,已删除并由上面的用例接管;
+  另外新增**每个包都不再暴露 `projectRootMarkers`** 的回归断言,防止这个概念悄悄回来。
+- cc-mcp 的集成测试此前会读到**本机真实的 `~/.claude.json`**(于是把用户自己的 server 混进断言),现在夹具把 `homeDir` 与
+  `claudeJsonPath` 都指向临时目录。
+
 ## v0.3.4 — 规则子目录、`.claude` 作为项目根标记、hook 的 shell 边界
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.3.4**,

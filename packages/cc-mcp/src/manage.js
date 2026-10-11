@@ -50,18 +50,17 @@ export function hostKey(serverName) {
 }
 
 /**
- * Stable identity of one configured server. Project servers are unique per
- * project config, plugin servers per (plugin, server) pair, host rows per
- * server name — the same identity a disable decision must survive across
- * sessions and restarts.
- * @param {{serverName: string, pluginName?: string, hostRow?: boolean}} entry
+ * Stable identity of one configured server. Keyed by scope and name — the same
+ * identity a disable decision must survive across sessions and restarts.
+ * Project servers keep the historic `project:` prefix so decisions recorded
+ * before scopes existed still resolve.
+ * @param {{serverName: string, scope?: string, pluginName?: string, hostRow?: boolean}} entry
  * @returns {string}
  */
 export function serverKey(entry) {
   if (entry.hostRow === true) return hostKey(entry.serverName)
-  return entry.pluginName
-    ? `plugin:${entry.pluginName}:${entry.serverName}`
-    : `project:${entry.serverName}`
+  if (entry.pluginName) return `plugin:${entry.pluginName}:${entry.serverName}`
+  return `${entry.scope ?? 'project'}:${entry.serverName}`
 }
 
 /**
@@ -83,14 +82,25 @@ export function transportOf(entry) {
 /** One JSON-safe server row for the panel. */
 export function serverEntry(record) {
   const tools = Array.isArray(record.tools) ? record.tools : []
-  const scope = record.entry.hostRow === true ? 'host' : record.entry.pluginName ? 'plugin' : 'project'
+  const entry = record.entry
+  const scope = entry.hostRow === true ? 'host' : entry.pluginName ? 'plugin' : (entry.scope ?? 'project')
   return {
     key: record.key,
-    serverName: record.entry.serverName,
-    pluginName: record.entry.pluginName ?? null,
+    serverName: entry.serverName,
+    pluginName: entry.pluginName ?? null,
+    // Claude Code's own scope vocabulary: user / local / project / plugin,
+    // plus 'host' for the host's own dsh-mcp-client rows.
     scope,
-    transport: transportOf(record.entry),
-    source: record.source ?? null,
+    // Where this server was read from — the detail view's provenance block.
+    // `declaredIn` is the session cwd CC records for project/local servers
+    // (module-0316.js:60617), so it equals the workspace unless the list is
+    // being rendered for a different directory.
+    declaredIn: entry.declaredIn ?? null,
+    sourcePath: entry.sourcePath ?? record.source ?? null,
+    pluginPath: entry.pluginPath ?? null,
+    pluginSource: entry.pluginSource ?? null,
+    transport: transportOf(entry),
+    source: record.source ?? entry.sourcePath ?? null,
     status: record.status,
     disabled: record.status === 'disabled',
     // A host row the host layer itself connected (managed false) is listed and
@@ -98,7 +108,7 @@ export function serverEntry(record) {
     // plugin adopted on demand is managed true.
     managed: record.managed === true,
     adoptable: record.adoptable === true,
-    rowId: record.entry.rowId ?? null,
+    rowId: entry.rowId ?? null,
     toolPrefix: record.toolPrefix ?? null,
     toolCount: tools.length,
     tools: tools.map((tool) => ({
@@ -112,7 +122,7 @@ export function serverEntry(record) {
 }
 
 /** Panel row order: project servers, then plugin servers, then host rows. */
-const SCOPE_ORDER = { project: 0, plugin: 1, host: 2 }
+const SCOPE_ORDER = { project: 0, user: 1, local: 2, plugin: 3, host: 4 }
 
 /** Sort servers by scope, then name — the panel's stable row order. */
 function compareServers(left, right) {
@@ -128,10 +138,22 @@ function compareServers(left, right) {
  */
 export function snapshotOf(state) {
   const servers = [...state.servers.values()].map(serverEntry).sort(compareServers)
+  const scopes = state.mcpScopes ?? {}
   return {
     sessionId: String(state.agent.id),
     known: true,
-    projectRoot: state.projectRoot ?? null,
+    // Where the list came from. There is no "project root" to show: discovery
+    // is per scope, so the panel shows the session's own workspace and the
+    // `~/.claude.json` scopes that were read for it.
+    workspace: state.baseCwd ?? null,
+    claudeJson: scopes.claudeJson ?? null,
+    // Servers that lost a name clash, so the detail view can say why a server
+    // the user wrote down is not the one in use.
+    shadowed: (scopes.shadowed ?? []).map((e) => ({
+      serverName: e.serverName,
+      scope: e.scope ?? null,
+      sourcePath: e.sourcePath ?? null,
+    })),
     sources: [...(state.sources ?? [])],
     checked: state.checked === true,
     servers,
@@ -148,7 +170,9 @@ export function unknownSnapshot(sessionId) {
   return {
     sessionId: sessionId === undefined || sessionId === null ? null : String(sessionId),
     known: false,
-    projectRoot: null,
+    workspace: null,
+    claudeJson: null,
+    shadowed: [],
     sources: [],
     checked: true,
     servers: [],
@@ -252,8 +276,11 @@ function statusText(entry) {
  * @returns {string}
  */
 export function formatTextReport(snapshot) {
+  const scopeCounts = new Map()
+  for (const entry of snapshot.servers) scopeCounts.set(entry.scope, (scopeCounts.get(entry.scope) ?? 0) + 1)
+  const byScope = [...scopeCounts].map(([scope, n]) => `${scope} ${n}`).join(', ')
   const lines = [
-    `MCP servers (${snapshot.servers.length}) — ${snapshot.projectRoot ?? 'no project root resolved'}`,
+    `MCP servers (${snapshot.servers.length})${byScope === '' ? '' : ` — ${byScope}`} — workspace ${snapshot.workspace ?? '(unknown)'}`,
   ]
   if (snapshot.servers.length === 0) {
     lines.push('  (no MCP server configured for this session)')

@@ -42,7 +42,6 @@ this adapter provides both halves:
 | `injectCatalog` | `true` | inject agent catalog into session start |
 | `enableRunInBackground` | `true` | expose `run_in_background` |
 | `maxDepth` | `3` | absolute delegation-depth cap |
-| `projectRootMarkers` | `['.git', '.claude']` | project root discovery markers; `.claude` resolves projects without a `.git` repo. The user's home is never a root |
 | `enableGlobal` | `true` | include global `~/.claude/agents` |
 | `globalClaudeDir` | `~/.claude` | override global dir |
 
@@ -67,7 +66,7 @@ The version is pinned deliberately: pnpm 11 withholds releases younger than 24 h
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-agents@0.3.4
+dsh plugin --profile <name> add dsh-cc-agents@0.4.0
 ```
 <!-- versions:end -->
 

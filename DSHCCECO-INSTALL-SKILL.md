@@ -105,13 +105,28 @@ node --input-type=module -e "await import('file:///C:/.../packages/cc-skills/src
 **② 逐插件行为验证**（每个都测，不要只测一个）：
 
 - **cc-skills**：会话技能目录出现 `~/.claude/skills` 的全局技能；`.claude/rules/*.md` 以 CC 信封注入上下文；配了 `pluginRoots` 时出现 `plugin-<插件>-<技能>` 命名空间技能，`/plugin-<插件>-<技能>` 可斜杠调用（补全为 DSH 前缀匹配，搜中间片段搜不到是正常行为）
-- **cc-permissions**：`.claude/settings.json` 写规则后触发对应命令应被拒，例如 deny `"PowerShell(Write-Output CC_PERM_DENY_*)"` 后执行 `Write-Output CC_PERM_DENY_xxx` → `Error: denied by ...`；`enableAllProjectMcpServers: true` 时项目 MCP 工具（`mcp__*`）自动放行
+- **cc-permissions**：`.claude/settings.json` 写规则后触发对应命令应被拒，例如 deny `"PowerShell(Write-Output CC_PERM_DENY_*)"` 后执行 `Write-Output CC_PERM_DENY_xxx` → `Error: denied by ...`；
+  **project 作用域的 MCP server 默认放行**（**不是** Claude Code 的行为，是有意偏离：CC 有交互式批准弹窗，DSH 没有，照抄会让 `.mcp.json` 里的 server 永远不可用）。唯一能拦的是 `<cwd>/.claude/settings.json` 里的 `disabledMcpjsonServers: ["<server>"]` —— 加上后该 server 的工具调用被拒。`enabledMcpjsonServers` / `enableAllProjectMcpServers` 仍会被读取，但**不再决定任何事**（只在 approval 缝隙里保留「显式批准才静默」的严格读法）。user / local / 插件作用域的 server 完全不受影响
 - **cc-hooks**：工具调用后在会话日志出现 `hook/invoked` + `hook/result` 事件（hook 子进程在沙箱内**写文件会 EPERM**，验证触发看会话日志事件，不要靠 hook 落盘）
 - **cc-agents**：出现 `cc_agent` 工具；配了 `pluginRoots` 时目录出现 `plugin-<插件>-<代理>`（需插件带 agents/）
-- **cc-mcp**：项目根 `.mcp.json` 的服务器工具出现为 `mcp__<server>__<tool>`；插件目录的为 `mcp__plugin_<插件>_<server>__<tool>`（插件名取 plugin.json 的 `name`，无 manifest 才用目录名）
+- **cc-mcp**：`~/.claude.json` 的 user / local 与各层祖先 `.mcp.json` 的服务器工具出现为 `mcp__<server>__<tool>`；插件目录的为 `mcp__plugin_<插件>_<server>__<tool>`（插件名取 plugin.json 的 `name`，无 manifest 才用目录名）。**面板 detail 会显示每条读自哪个作用域、哪个文件**。
+  **连接池**：同一个 server（配置没变）**只拨一次**，之后无论是重开面板、换会话、还是换工作区都直接复用——所以**第二次打开 `/mcp` 应当是秒开**（对比：配置改过、或闲置超过 `idleTimeoutMs` 默认 5 分钟后才会重拨）。诊断接口（`diag`）会返回当前池内容 `pool`
 
 **③ 测试资产注意**：SKILL.md/agent frontmatter 的 description 建议用 `|` 块标量。纯标量里的 `冒号+空格`（如 `Marker: x`）不是合法 YAML，但加载器会退回逐行 `key: value` 解析，并在 `warnings` 里报出是哪一行退化了 —— 不会再静默跳过。只有连一行 `key: value` 都读不出来时才真正丢弃。
 
 ## 4. 会话要求
 
-项目级发现按**会话 cwd** 进行：验证会话的 workspace 必须是插件 checkout 所在目录（或其子目录），且带 `.git` 标记，否则项目级 `.claude`（rules/hooks/settings/skills）发现不到。
+发现**按会话自己的 cwd**(不是「项目根」,Claude Code 里没有这个概念),而且**每个组件的范围不同**——验证时要照着挑 workspace:
+
+| 组件 | 从会话 cwd 往上读到哪里 |
+|---|---|
+| skills / commands / agents | 到 **git 根为止**(家目录不含);不在仓库里就一直走到家目录下方 |
+| `.claude/rules/**` | **整条祖先链到文件系统根**(不含根本身),**根在前** |
+| `settings.json` / `settings.local.json` / `hooks` | **只读 `<cwd>/.claude/`,不向上找** |
+| MCP | `~/.claude.json`(user/local)+ **全局祖先链**的 `.mcp.json`(近的覆盖远的) |
+
+因此:
+- 想验**项目级 skills**,workspace 在 checkout 目录或其**子目录**都行(会走到 git 根)——但 checkout 得带 `.git`;
+- 想验**项目级 settings / hooks / `.mcp.json`**,workspace 必须**正好是**放这些文件的那个目录(从子目录起会话拿不到父目录的 settings 与 hooks,这是 Claude Code 的行为);
+- `~/.claude` 是**全局**目录,永远不会被当成项目目录读第二遍。
+

@@ -94,7 +94,7 @@ test('integration: PreToolUse denies rm, passes git status; PostToolUse injects 
   const home = mkdtempSync(join(tmpdir(), 'cc-hooks-home-'))
   try {
     const ctx = makeCtx()
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
     const L = ctx._listeners
     assert.ok(L['agent/session-start'])
     assert.ok(L['agent/pre-step'])

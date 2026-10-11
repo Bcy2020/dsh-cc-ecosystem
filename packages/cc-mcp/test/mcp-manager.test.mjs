@@ -25,8 +25,10 @@ const FLAKY_SERVER = fileURLToPath(new URL('./mcp-flaky-server.mjs', import.meta
 
 // ─── pure projections ────────────────────────────────────────────────────────
 
-test('serverKey: project and plugin scopes never collide', () => {
+test('serverKey: each scope gets its own identity', () => {
   assert.equal(serverKey({ serverName: 'github' }), 'project:github')
+  assert.equal(serverKey({ serverName: 'github', scope: 'user' }), 'user:github')
+  assert.equal(serverKey({ serverName: 'github', scope: 'local' }), 'local:github')
   assert.equal(serverKey({ serverName: 'asana', pluginName: 'asana' }), 'plugin:asana:asana')
 })
 
@@ -53,6 +55,10 @@ test('serverEntry: projects a live record into the panel row shape', () => {
     serverName: 'echo',
     pluginName: null,
     scope: 'project',
+    declaredIn: null,
+    sourcePath: 'C:/p/.mcp.json',
+    pluginPath: null,
+    pluginSource: null,
     transport: 'stdio',
     source: 'C:/p/.mcp.json',
     status: 'ready',
@@ -66,6 +72,19 @@ test('serverEntry: projects a live record into the panel row shape', () => {
     error: null,
     updatedAt: 42,
   })
+})
+
+test('serverEntry: provenance fields survive from the loader entry', () => {
+  const entry = serverEntry({
+    key: 'user:github',
+    // What discoverMcpScopes produces for a `~/.claude.json` user-scope server.
+    entry: { serverName: 'github', scope: 'user', transport: 'stdio', sourcePath: 'C:/Users/u/.claude.json' },
+    status: 'ready',
+    tools: [],
+  })
+  assert.equal(entry.scope, 'user')
+  assert.equal(entry.sourcePath, 'C:/Users/u/.claude.json')
+  assert.equal(entry.source, 'C:/Users/u/.claude.json')
 })
 
 test('serverEntry: host rows carry the host scope and their row id', () => {
@@ -141,19 +160,19 @@ test('rpcOk/rpcFail: Connection RPC envelopes', () => {
 
 test('formatTextReport: marks each status and carries the error', () => {
   const text = formatTextReport({
-    projectRoot: 'C:/p',
+    workspace: 'C:/p',
     servers: [
       { serverName: 'ok', scope: 'project', transport: 'stdio', status: 'ready', toolCount: 2, error: null },
       { serverName: 'bad', scope: 'project', transport: 'http', status: 'error', toolCount: 0, error: 'ECONNREFUSED' },
       { serverName: 'off', scope: 'plugin', transport: 'stdio', status: 'disabled', toolCount: 0, error: null },
     ],
   })
-  assert.match(text, /MCP servers \(3\) — C:\/p/)
+  assert.match(text, /MCP servers \(3\) — project 2, plugin 1 — workspace C:\/p/)
   assert.match(text, /✓ ok \[project\/stdio\] connected · 2 tool\(s\)/)
   assert.match(text, /✗ bad \[project\/http\] not connected/)
   assert.match(text, /ECONNREFUSED/)
   assert.match(text, /– off \[plugin\/stdio\] disabled/)
-  assert.match(formatTextReport({ projectRoot: null, servers: [] }), /no MCP server configured/)
+  assert.match(formatTextReport({ workspace: null, servers: [] }), /no MCP server configured/)
 })
 
 // ─── persisted enable/disable store ──────────────────────────────────────────
@@ -238,6 +257,10 @@ async function harness(servers, options = {}) {
   const pinnedStatePath = typeof options.statePath === 'string' ? options.statePath : null
   /** The file the plugin actually writes: pinned, else the workspace default. */
   const activeStatePath = () => pinnedStatePath ?? join(projectDir, '.dsh', 'cc-mcp-state.json')
+  // Discovery reads `~/.claude.json` (Claude Code's user + local MCP scopes).
+  // Point both at directories inside the fixture so a real one cannot leak in.
+  const homeDir = join(projectDir, 'no-such-home')
+  const claudeJsonPath = join(projectDir, 'no-such-claude.json')
 
   const ctx = new Context()
   const logs = []
@@ -288,6 +311,10 @@ async function harness(servers, options = {}) {
     watchProject: false,
     idleTimeoutMs: 10000,
     toolCallTimeoutMs: 15000,
+    // Hermetic scopes: this machine's real `~/.claude.json` holds MCP servers,
+    // and discovery reads it for the user/local scopes.
+    homeDir: homeDir,
+    claudeJsonPath: claudeJsonPath,
   }))
 
   const registered = new Map()
@@ -362,7 +389,7 @@ async function harness(servers, options = {}) {
     command: () => commandDefinition,
     state: () => JSON.parse(readFileSync(activeStatePath(), 'utf8')),
     stateFileExists: () => existsSync(activeStatePath()),
-    /** `<projectRoot>/.dsh/cc-mcp-state.json` when the default path is active. */
+    /** The session workspace's state file when the default path is active. */
     workspaceStatePath: () => join(projectDir, '.dsh', 'cc-mcp-state.json'),
     async cleanup() {
       ctx.emit('agent/disposed', { agent })
@@ -406,7 +433,7 @@ test('rpc state: reachable server is ready with its tools, and the check is clea
     const state = await h.rpc('state', { sessionId: 'session-1' })
     assert.equal(state.ok, true)
     assert.equal(state.value.known, true)
-    assert.equal(state.value.projectRoot, h.projectDir)
+    assert.equal(state.value.workspace, h.projectDir)
     assert.equal(state.value.servers.length, 1)
     const [server] = state.value.servers
     assert.equal(server.serverName, 'echo')

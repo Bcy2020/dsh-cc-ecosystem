@@ -406,7 +406,7 @@ test('provider list exposes plugin skills as plugin-<plugin>-<name>', async () =
     assert.ok(names.includes('plugin-demo-plug-p-skill'), `names: ${names.join(', ')}`)
     const entry = list.find((s) => s.name === 'plugin-demo-plug-p-skill')
     assert.equal(entry.description, 'Plugin skill with a tool scope')
-    assert.equal(entry.rank, 170, 'plugin skill rank above global 160')
+    assert.equal(entry.rank, 150, 'ranks are positional: the first returned entry takes the base rank')
   } finally {
     await rm(project, { recursive: true, force: true })
     await rm(plugin, { recursive: true, force: true })

@@ -346,7 +346,8 @@ test('loadClaude: skills/commands/rules/permissions from temp tree', async () =>
     writeFileSync(join(dir, '.git'), '')
 
     const ir = await loadClaude({ cwd: dir, homeDir: join(tmpdir(), 'nohome'), enableGlobal: false })
-    assert.equal(ir.projectRoot, dir)
+    assert.equal(ir.scopes.gitRoot, dir)
+    assert.deepEqual(ir.scopes.project, [dir], 'bounded walk: the git root is the only project dir')
     assert.equal(ir.components.skills.length, 1)
     assert.equal(ir.components.skills[0].name, 'demo')
     assert.equal(ir.components.skills[0].description, 'Demo skill for tests')
@@ -364,14 +365,14 @@ test('loadClaude: skills/commands/rules/permissions from temp tree', async () =>
     assert.equal(ir.report.direct, 4) // skill + command + rule + permissions
 
     // Full evaluate through the IR
-    const result = evaluateCall(p.parsed, { tool: 'bash', args: { command: 'rm -rf tmp' } }, { cwd: dir, homeDir: join(tmpdir(), 'nohome'), projectRoot: dir })
+    const result = evaluateCall(p.parsed, { tool: 'bash', args: { command: 'rm -rf tmp' } }, { cwd: dir, homeDir: join(tmpdir(), 'nohome') })
     assert.equal(result.decision, 'deny')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
 
-test('loadClaude: global ~/.claude merged with lower rank', async () => {
+test('loadClaude: the user ~/.claude is merged ahead of the project dirs', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cc-loader-'))
   const home = mkdtempSync(join(tmpdir(), 'cc-home-'))
   try {
@@ -380,11 +381,13 @@ test('loadClaude: global ~/.claude merged with lower rank', async () => {
       '---', 'name: global-skill', 'description: A global skill', '---', 'global body',
     ].join('\n'))
     writeFileSync(join(dir, '.git'), '')
-    const ir = await loadClaude({ cwd: dir, homeDir: home, enableGlobal: true, projectRootMarkers: ['.git'] })
+    const ir = await loadClaude({ cwd: dir, homeDir: home, enableGlobal: true })
     assert.equal(ir.components.skills.length, 1)
     assert.equal(ir.components.skills[0].source, 'user-claude')
-    assert.equal(ir.components.skills[0].rank, 160)
+    assert.equal(ir.components.skills[0].baseDir, join(home, '.claude'))
     assert.equal(ir.components.skills[0].status, 'DIRECT')
+    // CC has no numeric rank: the user dir simply comes first in the list.
+    assert.equal(ir.components.skills[0].rank, undefined)
   } finally {
     rmSync(dir, { recursive: true, force: true })
     rmSync(home, { recursive: true, force: true })

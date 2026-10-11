@@ -90,7 +90,6 @@ async function runSessionStart(hooksMap, { config = {}, policy, ready = (ctx) =>
   apply(ctx, {
     enableGlobal: false,
     homeDir: home,
-    projectRootMarkers: ['.git'],
     shellDialect: 'posix', // keeps the probe off this path unless a test says otherwise
     ...config,
   })

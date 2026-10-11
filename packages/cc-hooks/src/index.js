@@ -69,8 +69,6 @@ export const Config = z.object({
   globalClaudeDir: z.string(),
   /** Override os.homedir() (tests). */
   homeDir: z.string(),
-  /** Markers for upward project-root discovery (default ['.git', '.claude']). */
-  projectRootMarkers: z.array(z.string()).default(['.git', '.claude']),
   /** Optional CLAUDE_PROJECT_DIR override; default = the session workspace. */
   projectDir: z.string(),
   /** Sandbox mode for command hooks. Empty follows the session's own policy;
@@ -117,7 +115,6 @@ export function apply(ctx, config = {}) {
   const defaultTimeoutMs = config.defaultTimeoutMs ?? DEFAULT_HOOK_TIMEOUT_MS
   const homeDir = config.homeDir ?? homedir()
   const pluginDirs = config.pluginDirs ?? []
-  const projectRootMarkers = config.projectRootMarkers ?? ['.git', '.claude']
 
   // Per-cwd cache of the merged parsed config, discovered at
   // session start (each new session re-reads hooks.json; a new session
@@ -130,7 +127,6 @@ export function apply(ctx, config = {}) {
   async function buildConfig(cwd) {
     const discovered = await discoverHookFiles(cwd, {
       homeDir,
-      projectRootMarkers,
       pluginDirs,
       enableGlobal: config.enableGlobal !== false,
       globalClaudeDir: config.globalClaudeDir,

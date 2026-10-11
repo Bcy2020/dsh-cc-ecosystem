@@ -27,10 +27,15 @@ process-level, read once at load; its own source carries the
 每个会话按 **session cwd** 发现 hooks 配置并**合并**执行(CC 语义:多份配置
 叠加,`mergeHookOutputs` 按 **deny > ask > allow** 最严格折叠):
 
-1. 项目 `<projectRoot>/.claude/hooks/hooks.json`(`projectRoot` 由 cwd 向上按
-   `.git` 等标记发现)
-2. 用户 `~/.claude/hooks/hooks.json`(`enableGlobal` 可关)
-3. 每个插件目录 `<pluginDir>/hooks/hooks.json`(`pluginDirs` 配置;该文件的
+1. 项目 `<cwd>/.claude/settings.json` 与 `settings.local.json` 里的 `hooks`
+2. 项目 `<cwd>/.claude/hooks/hooks.json`
+
+   (1、2 都锚在**会话 cwd** —— Claude Code 就是这样读 settings 的
+   (`<cwd>/.claude/`),**不从祖先目录找**。所以从子目录起的会话不会拿到仓库根
+   的 hooks。)
+
+3. 用户 `~/.claude/hooks/hooks.json`(`enableGlobal` 可关)
+4. 每个插件目录 `<pluginDir>/hooks/hooks.json`(`pluginDirs` 配置;该文件的
    `${CLAUDE_PLUGIN_ROOT}` 替换为对应插件根)
 
 - **只读**:不写任何文件,单一事实来源永远是 `.claude` 原文(与
@@ -70,7 +75,7 @@ process.exit(0)
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-loader@0.3.4 dsh-cc-hooks@0.3.4
+dsh plugin --profile <name> add dsh-cc-loader@0.4.0 dsh-cc-hooks@0.4.0
 ```
 <!-- versions:end -->
 
@@ -97,7 +102,6 @@ dsh plugin --profile <name> add dsh-cc-loader@0.3.4 dsh-cc-hooks@0.3.4
 | `enableGlobal` | `true` | 是否加载 `~/.claude/hooks/hooks.json` |
 | `globalClaudeDir` | `~/.claude` | 用户级目录覆盖(测试用) |
 | `homeDir` | `os.homedir()` | 家目录覆盖(测试用) |
-| `projectRootMarkers` | `['.git', '.claude']` | 项目根向上发现标记;`.claude` 让没有 git 仓库的项目也能定位到根 |
 | `projectDir` | 会话 cwd | `CLAUDE_PROJECT_DIR` 覆盖值 |
 | `sandboxMode` | `''` | hook 的沙箱模式。空 = 跟随会话;`danger-full-access` = 不设防(Claude Code 行为) |
 | `shellDialect` | `auto` | `ctx.shell` 说的是哪种语言:`auto` 在 Windows 上探一次 / `posix` / `pwsh` |

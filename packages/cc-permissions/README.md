@@ -61,7 +61,7 @@ The version is pinned deliberately: pnpm 11 withholds releases younger than 24 h
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-permissions@0.4.4
+dsh plugin --profile <name> add dsh-cc-permissions@0.5.0
 ```
 <!-- versions:end -->
 
@@ -74,7 +74,26 @@ dsh plugin --profile <name> add dsh-cc-permissions@0.4.4
 | `enableDefaultMode` | `true` | `defaultMode=dontAsk` → approval policy `never` |
 | `autoApproveAllowed` | `true` | `allow` rules auto-answer `approval/request` (incl. sandbox escalation) |
 | `homeDir` | `<home>` | Home dir for `~/.claude/settings.json` |
-| `projectRootMarkers` | `['.git', '.claude']` | Project root discovery; `.claude` resolves projects without a `.git` repo. The user's home is never a root |
+
+## `.mcp.json` servers are default-open
+
+Claude Code refuses tools from a project-scope MCP server until the user
+approves it, and prompts for that approval interactively. **DSH has no such
+prompt**, so copying the gate would leave every server a project `.mcp.json`
+declares permanently unusable — listed in the panel, dead on every call, with no
+way to say yes. The policy is therefore inverted: a project MCP tool runs unless
+settings explicitly reject it.
+
+| `.claude/settings.json` | Effect on a project-scope MCP tool |
+|---|---|
+| `disabledMcpjsonServers: ["<server>"]` | the call is refused |
+| `enabledMcpjsonServers` / `enableAllProjectMcpServers` | read and reported, but they no longer decide anything |
+| neither | the call runs |
+
+User-, local- and plugin-scope MCP servers are never touched by this. The
+**`approval/request`** seam above keeps the stricter reading: an approval raised
+for an MCP tool (a sandbox escalation, say) is answered automatically only when
+the server is *explicitly* approved — otherwise it reaches you.
 
 ## License
 

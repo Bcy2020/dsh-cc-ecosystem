@@ -36,12 +36,13 @@ const UNSUPPORTED_FIELDS = ['permissionMode', 'mcpServers', 'hooks', 'isolation'
  * Flat files only, like CC. Each agent needs `name` (frontmatter or file stem)
  * and `description`; the body is the delegation system prompt.
  * @param {string} agentsDir - path to the agents directory.
- * @param {string} scope - 'project' | 'global'.
- * @param {number} rank - precedence rank (lower wins).
- * @param {string[]} [warnings] - collected warnings.
+ * @param {{ scope: string, baseDir?: string, warnings?: string[] }} [opts] -
+ *   `scope` is 'project' | 'global'; `baseDir` is the `.claude` dir that
+ *   contributed it (which root this came from, for provenance).
  * @returns {Promise<object[]>} IR agent entries.
  */
-export async function discoverAgents(agentsDir, scope, rank, warnings = []) {
+export async function discoverAgents(agentsDir, opts = {}) {
+  const { scope, baseDir, warnings = [] } = opts
   const out = []
   if (!(await pathExists(agentsDir))) return out
   let entries
@@ -78,7 +79,7 @@ export async function discoverAgents(agentsDir, scope, rank, warnings = []) {
       warnings.push(`agent "${path}" skipped: empty system prompt body`)
       continue
     }
-    out.push(buildAgentEntry({ path, directory: agentsDir, name, description, body, fm, scope, rank, warnings }))
+    out.push(buildAgentEntry({ path, directory: agentsDir, name, description, body, fm, scope, baseDir, warnings }))
   }
   return out
 }
@@ -87,7 +88,7 @@ export async function discoverAgents(agentsDir, scope, rank, warnings = []) {
  * Build one IR agent entry from a parsed `.md` file, classifying every
  * frontmatter field. Never throws on an unknown field — it lands in `notes`.
  */
-export function buildAgentEntry({ path, directory, name, description, body, fm, scope, rank, warnings }) {
+export function buildAgentEntry({ path, directory, name, description, body, fm, scope, baseDir, warnings }) {
   const notes = []
   const status = classifyAgentFields(fm, notes)
 
@@ -124,7 +125,7 @@ export function buildAgentEntry({ path, directory, name, description, body, fm, 
     name,
     description,
     scope,
-    rank,
+    baseDir,
     source: path,
     locator: { path, directory },
     frontmatter: fm,
@@ -233,32 +234,34 @@ const CC_TO_DSH = Object.freeze({
 })
 
 /**
- * Merge agents from multiple roots into one catalog, resolving name conflicts
- * by scope precedence (project beats global). Later roots lose and warn.
- * @param {Array<{root: string, scope: string, rank: number}>} roots
+ * Merge agents from multiple roots into one catalog.
+ *
+ * Unlike skills and commands — where CC keeps every same-named entry and leaves
+ * the choice to the consumer — an agent catalog must be unique, because a DSH
+ * agent name is an identifier. So the LAST root in iteration order wins, and
+ * iteration order is CC's markdown order: user first, then project roots far →
+ * near. The nearest project therefore beats the user dir, which beats a farther
+ * project dir.
+ *
+ * @param {Array<{root: string, scope: string, baseDir?: string}>} roots
  * @returns {Promise<{agents: object[], warnings: string[]}>}
  */
 export async function mergeAgentCatalog(roots, warnings = []) {
   const byName = new Map()
-  for (const { root, scope, rank } of roots) {
-    const found = await discoverAgents(root, scope, rank, warnings)
-    for (const agent of found) {
+  for (const { root, scope, baseDir } of roots) {
+    for (const agent of await discoverAgents(root, { scope, baseDir, warnings })) {
       const existing = byName.get(agent.name)
-      if (existing === undefined) {
-        byName.set(agent.name, agent)
-        continue
+      if (existing !== undefined) {
+        warnings.push(`agent "${agent.name}": ${where(agent)} overrides ${where(existing)} (same name)`)
       }
-      // Same name: lower rank wins (project < global). Lose → warn (fail loud).
-      if (agent.rank < existing.rank) {
-        warnings.push(`agent "${agent.name}": ${scope} overrides ${existing.scope} (same name)`)
-        byName.set(agent.name, agent)
-      } else if (agent.rank > existing.rank) {
-        warnings.push(`agent "${agent.name}": ${scope} conflicts with ${existing.scope} — ${existing.scope} wins`)
-      }
-      // Equal rank: first root wins silently (same scope, duplicate dirs).
+      byName.set(agent.name, agent)
     }
   }
   return { agents: [...byName.values()], warnings }
+}
+
+function where(agent) {
+  return agent.baseDir === undefined ? agent.scope : `${agent.scope} ${agent.baseDir}`
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────

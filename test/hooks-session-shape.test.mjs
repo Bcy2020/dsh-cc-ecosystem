@@ -129,7 +129,7 @@ for (const kind of ['new', 'legacy']) {
     const { project } = buildProject()
     try {
       const ctx = makeCtx()
-      apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+      apply(ctx, { enableGlobal: false, homeDir: home })
       const appended = []
       const agent = { session: fakeSession(project, kind, appended) }
 
@@ -156,7 +156,7 @@ for (const kind of ['new', 'legacy']) {
     const { project, capture } = buildProject()
     try {
       const ctx = makeCtx()
-      apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+      apply(ctx, { enableGlobal: false, homeDir: home })
       const appended = []
       const agent = { session: fakeSession(project, kind, appended) }
 
@@ -183,7 +183,7 @@ test('the readers are total: a session with no readable log yields the neutral v
   const { project, capture } = buildProject()
   try {
     const ctx = makeCtx()
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
     // A session exposing neither reader — the pre-0.1.2 shape minus `events`,
     // i.e. whatever a future host might hand us. Must degrade, never throw.
     const agent = { session: { header: { id: 's', cwd: project }, append: () => {} } }

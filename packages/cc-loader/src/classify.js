@@ -291,7 +291,15 @@ function matchPath(rule, filePath, env) {
   return new RegExp(source).test(rel)
 }
 
-/** The anchor directory (POSIX) for a rule's `kind`, by its source scope. */
+/**
+ * The anchor directory (POSIX) for a rule's `kind`, by its source scope.
+ *
+ * A leading-`/` pattern is relative to the root of the settings file it came
+ * from: `~/.claude` for user settings, and `<cwd>` for project/local settings,
+ * which CC reads from `<cwd>/.claude/` (module-0045.js:11331; the "settings
+ * file root" wording is module-0045.js:463). DSH has no project root to anchor
+ * to, and CC's settings are not read from an ancestor either.
+ */
 function anchorBase(rule, env) {
   const scope = rule.scope
   const home = posix(env.homeDir)
@@ -300,8 +308,7 @@ function anchorBase(rule, env) {
     case 'home': return home
     case 'source':
       if (scope === 'user') return `${home}/.claude`
-      if (scope === 'local') return posix(env.cwd)
-      return posix(env.projectRoot ?? env.cwd)
+      return posix(env.cwd)
     case 'cwd':
     default:
       return posix(env.cwd)

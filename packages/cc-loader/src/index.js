@@ -10,18 +10,24 @@
 // UNSUPPORTED and BLOCKED components never reach the adapters.
 
 export { loadClaude, loadPermissions } from './load.js'
+// Per-component scope resolution — CC's real model (see scopes.js).
+export {
+  findGitRoot, boundedAncestors, fullAncestors, claudeJsonProjectKey,
+  readClaudeJsonScopes, settingsPaths, posixPath, pathExists, readTextSafe,
+} from './scopes.js'
 export {
   discoverSkills, discoverCommands, collectClaudeDir, discoverRules,
-  findProjectRoot, findClaudeProjectRoot, parseFrontmatter, isSkillName, pathExists, readTextSafe,
+  parseFrontmatter, isSkillName,
 } from './skills.js'
-export { discoverSettings, mergeSettings } from './settings.js'
+export { discoverSettings, mergeSettings, SETTINGS_PRECEDENCE } from './settings.js'
 export {
   discoverAgents, mergeAgentCatalog, buildAgentEntry, classifyAgentFields,
   expandCcToolToDsh,
 } from './agents.js'
 export {
   parseMcpText, serverEntries, discoverMcpConfig, discoverProjectMcp,
-  VALID_SERVER_NAME, ENV_PLACEHOLDER,
+  discoverClaudeJsonMcp, discoverMcpScopes, resolveMcpServer, projectMcpApproval,
+  MCP_SCOPE_PRECEDENCE, GATED_MCP_SCOPE, VALID_SERVER_NAME, ENV_PLACEHOLDER,
 } from './mcp.js'
 export { discoverLspConfig, parseLspText } from './lsp.js'
 export {

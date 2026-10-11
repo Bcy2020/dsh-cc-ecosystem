@@ -103,7 +103,7 @@ test('Stop payload carries last_assistant_message (text blocks only, no reasonin
   const { project, capture } = buildProject()
   try {
     const ctx = makeCtx()
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
     const L = ctx._listeners
 
     const agent = makeAgent(project)
@@ -127,7 +127,7 @@ test('Stop payload with no prior assistant reply sends an empty last_assistant_m
   const { project, capture } = buildProject()
   try {
     const ctx = makeCtx()
-    apply(ctx, { enableGlobal: false, homeDir: home, projectRootMarkers: ['.git'] })
+    apply(ctx, { enableGlobal: false, homeDir: home })
     const L = ctx._listeners
 
     const agent = makeAgent(project, { withLastReply: false })

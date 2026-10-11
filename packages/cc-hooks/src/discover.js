@@ -18,7 +18,7 @@
 
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { findProjectRoot, pathExists, readTextSafe } from 'dsh-cc-loader'
+import { pathExists, readTextSafe, settingsPaths } from 'dsh-cc-loader'
 
 /**
  * @typedef {object} HookSource
@@ -32,38 +32,41 @@ import { findProjectRoot, pathExists, readTextSafe } from 'dsh-cc-loader'
 
 /**
  * Discover hook config sources for a session cwd.
+ *
+ * Project and local config sit at FIXED locations under the session cwd
+ * (`<cwd>/.claude/…`) — CC anchors settings on the cwd, never on an ancestor
+ * (module-0045.js:11331), so a session started in a subdirectory does not pick
+ * up the repository root's hooks.
+ *
  * @param {string} cwd - session workspace.
  * @param {object} [opts]
  * @param {string} [opts.homeDir] - default os.homedir().
- * @param {string[]} [opts.projectRootMarkers] - default ['.git', '.claude'].
  * @param {string[]} [opts.pluginDirs] - plugin roots scanned for
  *   `<dir>/hooks/hooks.json` (default []).
  * @param {boolean} [opts.enableGlobal] - include the user-level sources
  *   (`~/.claude/settings.json` hooks + `~/.claude/hooks/hooks.json`).
  * @param {string} [opts.globalClaudeDir] - override the user `~/.claude` dir.
- * @returns {Promise<{ projectRoot?: string, sources: HookSource[] }>}
+ * @returns {Promise<{ sources: HookSource[] }>}
  */
 export async function discoverHookFiles(cwd, opts = {}) {
   const homeDir = opts.homeDir ?? homedir()
-  const globalDir = opts.globalClaudeDir ?? join(homeDir, '.claude')
+  const paths = settingsPaths(cwd, { homeDir, globalClaudeDir: opts.globalClaudeDir })
   const sources = []
 
   if (opts.enableGlobal !== false) {
-    const userSettings = await readSource('user', join(globalDir, 'settings.json'), { requireHooksKey: true })
+    const userSettings = await readSource('user', paths.user, { requireHooksKey: true })
     if (userSettings !== undefined) sources.push(userSettings)
-    const userHooks = await readSource('user', join(globalDir, 'hooks', 'hooks.json'))
+    const userHooks = await readSource('user', join(homeDir, '.claude', 'hooks', 'hooks.json'))
     if (userHooks !== undefined) sources.push(userHooks)
   }
 
-  const projectRoot = await findProjectRoot(cwd, opts.projectRootMarkers, { homeDir })
-  if (projectRoot !== undefined) {
-    const projectSettings = await readSource('project', join(projectRoot, '.claude', 'settings.json'), { requireHooksKey: true })
-    if (projectSettings !== undefined) sources.push(projectSettings)
-    const localSettings = await readSource('local', join(projectRoot, '.claude', 'settings.local.json'), { requireHooksKey: true })
-    if (localSettings !== undefined) sources.push(localSettings)
-    const projectHooks = await readSource('project', join(projectRoot, '.claude', 'hooks', 'hooks.json'))
-    if (projectHooks !== undefined) sources.push(projectHooks)
-  }
+  const claudeDir = join(cwd, '.claude')
+  const projectSettings = await readSource('project', paths.project, { requireHooksKey: true })
+  if (projectSettings !== undefined) sources.push(projectSettings)
+  const localSettings = await readSource('local', paths.local, { requireHooksKey: true })
+  if (localSettings !== undefined) sources.push(localSettings)
+  const projectHooks = await readSource('project', join(claudeDir, 'hooks', 'hooks.json'))
+  if (projectHooks !== undefined) sources.push(projectHooks)
 
   for (const dir of opts.pluginDirs ?? []) {
     if (typeof dir !== 'string' || dir.length === 0) continue
@@ -74,7 +77,7 @@ export async function discoverHookFiles(cwd, opts = {}) {
     }
   }
 
-  return { projectRoot, sources }
+  return { sources }
 }
 
 /**
