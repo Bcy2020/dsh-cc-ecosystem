@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="mem-title mem-desc">
+  <title id="mem-title">/cc-memory 面板的两个开关</title>
+  <desc id="mem-desc">启用 Memory 打开后，DSH 系统提示会注入 MEMORY.md 索引与 pinned 记忆正文；允许写入关闭时只提供 cc_memory_list 与 cc_memory_read，打开后额外提供 cc_memory_write 与 cc_memory_edit。</desc>
+
+  <rect width="1200" height="300" rx="22" fill="#F5F4ED"/>
+  <rect x="1" y="1" width="1198" height="298" rx="21" fill="none" stroke="#E8E6DC" stroke-width="1.5"/>
+
+  <g id="panel" transform="translate(64 40)">
+    <rect x="0" y="0" width="520" height="220" rx="14" fill="#FAF9F5" stroke="#E8E6DC"/>
+    <text x="24" y="36" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" fill="#87867F">/cc-memory · 面板示意</text>
+
+    <g id="row-enabled">
+      <text x="24" y="92" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" fill="#141413">启用 Memory</text>
+      <rect x="414" y="68" width="70" height="34" rx="17" fill="#C96442"/>
+      <circle cx="466" cy="85" r="13" fill="#FAF9F5"/>
+    </g>
+
+    <g id="row-writable">
+      <text x="24" y="152" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="23" fill="#87867F">允许写入</text>
+      <rect x="414" y="128" width="70" height="34" rx="17" fill="#E8E6DC"/>
+      <circle cx="436" cy="145" r="13" fill="#B0AEA5"/>
+      <text x="24" y="187" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="16" fill="#87867F">关闭「启用」时，这一项置灰</text>
+    </g>
+  </g>
+
+  <g id="arrows" stroke="#141413" stroke-width="2.2" stroke-linecap="round" fill="none" stroke-dasharray="6 6">
+    <path d="M584 122 C598 122 604 104 614 92"/>
+    <path d="M584 196 C598 196 604 206 614 210"/>
+  </g>
+  <g stroke="#141413" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M614 92 L605 92 M614 92 L609 100"/>
+    <path d="M614 210 L605 207 M614 210 L608 202"/>
+  </g>
+
+  <g id="output-cards" transform="translate(620 0)">
+    <g>
+      <rect x="0" y="48" width="516" height="84" rx="12" fill="#FAF9F5" stroke="#E8E6DC"/>
+      <text x="22" y="78" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#87867F">系统提示 · 每次请求重读</text>
+      <text x="22" y="108" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="22" fill="#141413">MEMORY.md 索引 + pinned 正文</text>
+    </g>
+    <g>
+      <rect x="0" y="148" width="516" height="112" rx="12" fill="#FAF9F5" stroke="#E8E6DC"/>
+      <text x="22" y="178" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#87867F">工具</text>
+      <text x="22" y="208" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#141413">cc_memory_list · cc_memory_read</text>
+      <text x="22" y="236" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" fill="#87867F">可写时另加 cc_memory_write / cc_memory_edit</text>
+    </g>
+  </g>
+</svg>
