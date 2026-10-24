@@ -1,9 +1,9 @@
 name: Release
 
-# npm publish for the seven dsh-cc packages, in dependency order (dsh-cc-loader
-# first, the dsh-cc-ecosystem umbrella LAST because it depends on the other six).
+# npm publish for the eight dsh-cc packages, in dependency order (dsh-cc-loader
+# first, the dsh-cc-ecosystem umbrella LAST because it depends on the other seven).
 # Triggered by a `v*` tag (e.g. v0.1.1). Requires the repository Secret NPM_TOKEN
-# — a granular access token with read+write on ALL SEVEN packages (a new package
+# — a granular access token with read+write on ALL EIGHT packages (a new package
 # is not covered by an existing token's package list) and "2FA bypass" enabled
 # (the account uses 2FA).
 #
@@ -62,7 +62,13 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Last: the umbrella depends on all six, so its ranges must already be
+      - name: Publish dsh-cc-memory
+        working-directory: packages/cc-memory
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Last: the umbrella depends on all seven, so its ranges must already be
       # resolvable on the registry when this runs.
       - name: Publish dsh-cc-ecosystem
         working-directory: packages/cc-ecosystem
@@ -79,7 +85,7 @@ jobs:
         run: |
           set -eu
           for p in dsh-cc-loader dsh-cc-skills dsh-cc-permissions dsh-cc-agents \
-                   dsh-cc-hooks dsh-cc-mcp dsh-cc-ecosystem; do
+                   dsh-cc-hooks dsh-cc-mcp dsh-cc-memory dsh-cc-ecosystem; do
             dir="packages/${p#dsh-}"
             ver=$(node -p "require('./$dir/package.json').version")
             # npm serves a publish asynchronously ("may take a few minutes to

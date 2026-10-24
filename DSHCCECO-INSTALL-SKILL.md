@@ -1,7 +1,7 @@
 ---
 name: dsh-cc-ecosystem-install
 description: |
-  Install and hot-mount the dsh-cc-ecosystem plugin family (cc-loader, cc-skills, cc-permissions, cc-agents, cc-hooks, cc-mcp) into a running DeepSeek Harness (DSH) Web profile through the cordis.patch.yml file:/// layer — surfacing Claude Code .claude/ assets (skills, commands, rules, permissions, agents, hooks, MCP servers) and Claude Code plugins (plugin.json / .mcp.json / skills / agents, namespaced plugin-<plugin>-<component>) in DSH. Use whenever the user asks to install, hot-load, hot-mount, mount, or test this plugin family or their own DSH plugin from a local checkout, even if they do not name the plugin explicitly.
+  Install and hot-mount the dsh-cc-ecosystem plugin family (cc-loader, cc-skills, cc-permissions, cc-agents, cc-hooks, cc-mcp, cc-memory) into a running DeepSeek Harness (DSH) Web profile through the cordis.patch.yml file:/// layer — surfacing Claude Code .claude/ assets (skills, commands, rules, permissions, agents, hooks, MCP servers, auto-memory) and Claude Code plugins (plugin.json / .mcp.json / skills / agents, namespaced plugin-<plugin>-<component>) in DSH. Use whenever the user asks to install, hot-load, hot-mount, mount, or test this plugin family or their own DSH plugin from a local checkout, even if they do not name the plugin explicitly.
 ---
 # Install dsh-cc-ecosystem into DSH (hot-mount)
 
@@ -36,11 +36,11 @@ New-Item -ItemType Junction -Path "<checkout>\node_modules\dsh-cc-loader" -Targe
 - `dsh-hook-protocol` profile 里没有，junction 指向 DSH checkout 的 `packages/hooks/hook-protocol`
 - `@deepseek-ai` 整目录 junction 覆盖所有 peer（schemastery / dsh-llm / dsh-subprocess…）
 
-**验证解析**：逐个导入 5 个插件模块，全部成功才能继续：
+**验证解析**：逐个导入 6 个插件模块，全部成功才能继续：
 
 ```powershell
 node --input-type=module -e "await import('file:///C:/.../packages/cc-skills/src/index.js').then(m=>console.log('ok',m.name))"
-# 同理验证 cc-permissions / cc-agents / cc-hooks / cc-mcp
+# 同理验证 cc-permissions / cc-agents / cc-hooks / cc-mcp / cc-memory
 ```
 
 ## 2. 写入 profile 的 cordis.patch.yml
@@ -86,6 +86,12 @@ node --input-type=module -e "await import('file:///C:/.../packages/cc-skills/src
         watchProject: true
         # 插件 .mcp.json / plugin.json 内联 mcpServers,工具名 mcp__plugin_<插件>_<server>__<tool>
         pluginRoots: ['C:/.../my-plugin']
+    - id: cc-memory
+      name: 'file:///C:/.../packages/cc-memory/src/index.js?v=1'
+      config:
+        enabled: true
+        # 第二个开关:read-only(默认,只有 list/read)/ read-write(额外提供 write/edit)
+        mode: 'read-only'
 ```
 
 要点：
@@ -100,7 +106,7 @@ node --input-type=module -e "await import('file:///C:/.../packages/cc-skills/src
 {"type":"client-request","rpcId":"probe-1","method":"pluginInventory/list","payload":{"args":{}}}
 ```
 
-5 个 `file:///...` 条目应全部 `enabled=true phase=active`。
+6 个 `file:///...` 条目应全部 `enabled=true phase=active`。
 
 **② 逐插件行为验证**（每个都测，不要只测一个）：
 
@@ -111,6 +117,9 @@ node --input-type=module -e "await import('file:///C:/.../packages/cc-skills/src
 - **cc-agents**：出现 `cc_agent` 工具；配了 `pluginRoots` 时目录出现 `plugin-<插件>-<代理>`（需插件带 agents/）
 - **cc-mcp**：`~/.claude.json` 的 user / local 与各层祖先 `.mcp.json` 的服务器工具出现为 `mcp__<server>__<tool>`；插件目录的为 `mcp__plugin_<插件>_<server>__<tool>`（插件名取 plugin.json 的 `name`，无 manifest 才用目录名）。**面板 detail 会显示每条读自哪个作用域、哪个文件**。
   **连接池**：同一个 server（配置没变）**只拨一次**，之后无论是重开面板、换会话、还是换工作区都直接复用——所以**第二次打开 `/mcp` 应当是秒开**（对比：配置改过、或闲置超过 `idleTimeoutMs` 默认 5 分钟后才会重拨）。诊断接口（`diag`）会返回当前池内容 `pool`
+- **cc-memory**：系统提示出现 `# auto memory` 段，其中含 `MEMORY.md` 的当前内容；`cc_memory_list` / `cc_memory_read` 出现（`read-only`）。输入 `/cc-memory` 应弹出面板，两个 Switch：关闭第一个后第二个**置灰**；打开可写后 `cc_memory_write` / `cc_memory_edit` 立即出现（无需重启）；关闭第一个后系统提示段与四类工具**全部消失**。开关写入 `$DSH_HOME/cc-memory-state.json`，重启后保持。索引每次请求重读：改盘上的 `MEMORY.md`，下一轮的系统提示随之变化。
+  另验证 pinned：给一条记忆的 frontmatter 加 `metadata.pinned: true`，下一轮系统提示应在 `MEMORY.md` 之前出现 `# Pinned memories (apply to every conversation)` 和 `<pinned-memory path="…">`；最多 4 条，按修改时间取最新。
+  **hot-mount 注意**：客户端半个由 GUI 的 client-module 扫描器按 `dsh.client` + `exports["./client"]` 发现；`file:///` 行指向 `src/index.js` 时它会向上找到包根。首次挂载后**重启 DSH**，否则 `/cc-memory` 命令不会出现在斜杠菜单。
 
 **③ 测试资产注意**：SKILL.md/agent frontmatter 的 description 建议用 `|` 块标量。纯标量里的 `冒号+空格`（如 `Marker: x`）不是合法 YAML，但加载器会退回逐行 `key: value` 解析，并在 `warnings` 里报出是哪一行退化了 —— 不会再静默跳过。只有连一行 `key: value` 都读不出来时才真正丢弃。
 
@@ -124,6 +133,7 @@ node --input-type=module -e "await import('file:///C:/.../packages/cc-skills/src
 | `.claude/rules/**` | **整条祖先链到文件系统根**(不含根本身),**根在前** |
 | `settings.json` / `settings.local.json` / `hooks` | **只读 `<cwd>/.claude/`,不向上找** |
 | MCP | `~/.claude.json`(user/local)+ **全局祖先链**的 `.mcp.json`(近的覆盖远的) |
+| auto-memory | 只按**会话 cwd** 的 slug 找 `~/.claude/projects/<slug>/memory`;`autoMemoryDirectory` 只读 local/user settings |
 
 因此:
 - 想验**项目级 skills**,workspace 在 checkout 目录或其**子目录**都行(会走到 git 根)——但 checkout 得带 `.git`;

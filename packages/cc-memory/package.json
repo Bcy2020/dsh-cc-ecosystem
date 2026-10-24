@@ -1,0 +1,52 @@
+{
+  "name": "dsh-cc-memory",
+  "version": "0.1.0",
+  "description": "Load Claude Code's auto-memory (MEMORY.md index + ~/.claude/projects/<slug>/memory/*.md) into DSH as a per-request system-prompt section, with two runtime switches: off entirely, or read-only vs read-write memory tools. Ships the /cc-memory switch panel as a client half. Discovery, index budgeting and truncation follow the Claude Code CLI.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./client/index.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "files": [
+    "src",
+    "client",
+    "README.md",
+    "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "claude-code",
+    "claude",
+    "memory",
+    "auto-memory"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/schemastery": "3.18.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": "git+https://github.com/Bcy2020/dsh-cc-ecosystem.git",
+  "homepage": "https://github.com/Bcy2020/dsh-cc-ecosystem"
+}

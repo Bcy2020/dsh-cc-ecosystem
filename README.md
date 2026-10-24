@@ -2,11 +2,11 @@
 
 [![Listed in dsh-market (via awesome-dsh-plugin)](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/dsh-market/dsh-market)
 
-把你 Claude Code 的 `.claude/` 资产原样搬进 DeepSeek Harness —— 技能、斜杠命令、规则、权限、子代理、hooks、MCP 全部照常工作,不需要改写任何配置。
+把你 Claude Code 的 `.claude/` 资产原样搬进 DeepSeek Harness —— 技能、斜杠命令、规则、权限、子代理、hooks、MCP、auto-memory 全部照常工作,不需要改写任何配置。
 
-Load your Claude Code `.claude/` assets (skills, commands, rules, permissions, agents, hooks, MCP) into DeepSeek Harness as-is — no config rewriting.
+Load your Claude Code `.claude/` assets (skills, commands, rules, permissions, agents, hooks, MCP, auto-memory) into DeepSeek Harness as-is — no config rewriting.
 
-> **你的 `.claude` 永远是唯一事实来源。** 插件只读它、从不写回:改配置就是改 `.claude`,与 Claude Code 天然同步,两边不会各有一套。
+> **你的 `.claude` 永远是唯一事实来源。** 插件只读它;唯一例外是 auto-memory 的**显式可写模式**(默认只读),打开后 DSH 才能新增 / 修改记忆文件。其余配置改的就是 `.claude`,与 Claude Code 天然同步,两边不会各有一套。
 
 ## 装什么给你什么
 
@@ -17,6 +17,7 @@ Load your Claude Code `.claude/` assets (skills, commands, rules, permissions, a
 | **子代理** | `.claude/agents/*.md` 变成 DSH 可派发的 agent(正文即系统提示词,`tools` / `model` / `skills` 等 frontmatter 生效) |
 | **Hooks** | 项目 / 全局 / 插件里的 `hooks.json` 原样运行,command、http、mcp_tool、prompt、agent 五类处理器都支持 |
 | **MCP 服务器** | Claude Code 的三个 MCP 作用域(`~/.claude.json` 的 user / local、各层祖先的 `.mcp.json`、插件内联 `mcpServers`)自动注册为 DSH 工具,并附带 `/mcp` 管理面板(状态、重连、工具列表、按工作区启停、**每条显示读自哪个文件**) |
+| **Auto-memory** | `~/.claude/projects/<slug>/memory/` 的 `MEMORY.md` 索引进入系统提示、每次请求重读;记忆文件按需读取。两个开关:**关**(DSH 完全看不到)或**开**;**开**时可再选只读 / 可写(可写才提供增改工具) |
 | **Claude Code 插件** | `plugin.json` 与 marketplace 也能读:插件的技能 / 命令 / agent / hooks / MCP 以 `plugin-<插件名>-<组件>` 命名空间并入 |
 
 ## 安装
@@ -27,7 +28,7 @@ Load your Claude Code `.claude/` assets (skills, commands, rules, permissions, a
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem@0.4.0
+dsh plugin --profile <name> add dsh-cc-ecosystem@0.5.0
 ```
 <!-- versions:end -->
 
@@ -61,6 +62,7 @@ pnpm 11 起默认开启 **`minimumReleaseAge`**(1440 分钟 = 1 天,见 [pnpm �
 | [dsh-cc-agents](https://www.npmjs.com/package/dsh-cc-agents) | 子代理目录 + `cc_agent` 派发 |
 | [dsh-cc-hooks](https://www.npmjs.com/package/dsh-cc-hooks) | Claude Code hooks |
 | [dsh-cc-mcp](https://www.npmjs.com/package/dsh-cc-mcp) | MCP 服务器 + `/mcp` 管理面板 |
+| [dsh-cc-memory](https://www.npmjs.com/package/dsh-cc-memory) | Auto-memory(索引注入 + 读取工具;可选可写) |
 | [dsh-cc-loader](https://www.npmjs.com/package/dsh-cc-loader) | 共享解析层(自动安装,非插件) |
 
 从本地 checkout 热挂载(不发布到 npm 的开发流程)见 [DSHCCECO-INSTALL-SKILL.md](DSHCCECO-INSTALL-SKILL.md)。
@@ -69,10 +71,11 @@ pnpm 11 起默认开启 **`minimumReleaseAge`**(1440 分钟 = 1 天,见 [pnpm �
 
 | 你的 DSH 版本 | 用哪个 |
 |---|---|
-| `0.1.5-rc.2` 或 `0.2.0-rc.2` | **`v0.4.0`(当前)** —— 一条版本线同时兼容这两代 |
+| `0.1.5-rc.2` 或 `0.2.0-rc.2` | **`v0.5.0`(当前)** —— 一条版本线同时兼容这两代 |
 | `0.1.0-rc.7` ~ `0.1.1-rc.2` | `v0.1.x`(已停止维护) |
 
 用 `0.2.0` 就必须是 `v0.3.1` 或更新:更早的版本会被 DSH 的插件安装检查直接拒绝。
+`v0.5.0` 新增 **`dsh-cc-memory`**:把 Claude Code 的 auto-memory(`MEMORY.md` 索引、记忆文件、pinned 正文)注入系统提示,并提供 `/cc-memory` 面板与「关 / 只读 / 可写」两个开关;提示词按 CLI 2.1.275 的 Memory 说明逐字对齐。全家桶会一并安装并挂载它。
 `v0.4.0` **参考 Claude Code 的实现重做了发现层**:不再有「项目根」这个我们自造的概念,改为按 Claude Code 的逐组件作用域发现(技能走到 git 根、规则走整条祖先链、`settings.json` 锚在 cwd),**MCP 现在会读 `~/.claude.json`**(此前完全没读,这正是 `/mcp` 面板空白的根因),面板每条 server 都会显示**读自哪个作用域、哪个文件**。**这一版会改变已有配置的含义**,升级前请读 [CHANGELOG](CHANGELOG.md) 的「破坏性变更」。
 `v0.3.4` 让 `.claude/rules` 的子目录真正被读到、把 `.claude` 当作项目根标记(没有 git 仓库的项目也能定位),并修掉 Windows 上 command hook 的三处失效 —— 详见 [CHANGELOG](CHANGELOG.md)。
 `v0.3.3` 让 Claude Code 读得了、但 YAML 不严格的 frontmatter 不再被静默丢弃 —— 此前这类 agent / 技能 / 斜杠命令会整个消失。

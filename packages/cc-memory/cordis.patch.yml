@@ -1,0 +1,6 @@
+- insert:
+    - id: cc-memory
+      name: 'dsh-cc-memory'
+      config:
+        enabled: true
+        mode: 'read-only'
