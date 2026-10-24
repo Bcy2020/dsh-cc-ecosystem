@@ -9,6 +9,28 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.5.0 — 新增 `dsh-cc-memory`(Claude Code auto-memory)
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.5.0**,
+`cc-permissions` **0.6.0**,`dsh-cc-memory` **0.1.0**。
+
+**新包**:`dsh-cc-memory@0.1.0`;全家桶 `dsh-cc-ecosystem` 增加对它的依赖与挂载行。
+
+> **参考了 Claude Code 的实现。** 发现路径、索引预算、截断语义都对着 CLI 2.1.275 的内联源码核对:
+> `~/.claude/projects/<slug>/memory/`、slug 的非字母数字替换、200 行 / 25,000 字符的**整行截断 + WARNING**、
+> `autoMemoryDirectory` 的 `~/` 展开。README 里写明了**两处有意偏离**。
+
+- **两个开关 + `/cc-memory` 面板**:`enabled`(关掉时**不注册任何东西** —— 没有系统提示段、没有工具)与 `mode`(`read-only` 默认 / `read-write`)。
+  `/cc-memory` 弹出两个 Switch;**第一个关闭时第二个置灰**。改动立即生效(注销/重注册提示段与工具),不需要重启。
+- **持久化**:开关写入 `$DSH_HOME/cc-memory-state.json`(`statePath` 可覆盖);`Config` 只作为首次运行默认值。状态文件损坏时回退到 Config 默认值并上报。
+- **客户端半个**:新增 `client/index.js`(经典脚本,`commandUi.register`)与 host 路由 `webServer` `/cc-memory`(`state` / `set`,带 `x-cc-memory` 头防 CSRF)。
+- **提示词逐字对齐 CC 的 Memory 说明**:`Types of memory`(含四类完整定义与例子)、`What NOT to save`、`How to save memories`(两步法 + frontmatter + `[[name]]`)、`When to access memories`、`Before recommending from memory`、`Memory and other forms of persistence` 全部照抄 CLI 2.1.275;仅替换工具名与只读句。索引改用 CC 的 `Contents of <path> (user's auto-memory, persists across conversations):` 包装。
+- **修复 `{{…}}` 让整轮失败**:DSH 把 `{{name}}` 当严格变量插值,CC 模板里的 `{{short-kebab-case-slug}}` 会抛 `malformed prompt variable reference`。模板改为单花括号,并在返回前折叠任何连续 `{{` / `}}`,记忆正文里的 `{{…}}` 也不会再炸。
+- **Pinned 正文注入**:照 CC 扫描 `metadata.pinned: true`,按修改时间取最新 4 条,去 frontmatter、按 200 行/25k 截断,以 `# Pinned memories (apply to every conversation)` + `<pinned-memory path="…">` 放在 `MEMORY.md` 之前;正文 `<` 转义。扫描缓存 5 秒,写入失效。
+- **工具**:只读提供 `cc_memory_list` / `cc_memory_read`;可写**额外**提供 `cc_memory_write` / `cc_memory_edit`,沿用 CC 的两步法(写文件 → 改索引)。
+- **有意偏离**:① `archive/` 同时从列表排除(issue 的验收要求);② 不读项目级 `settings.json` 的 `autoMemoryDirectory`(CC 需要交互式信任提示,DSH 没有)。
+- **不做**:`autoMemoryEnabled` / `CLAUDE_CODE_DISABLE_AUTO_MEMORY` —— DSH 的 `enabled` 是唯一决定项,避免 UI 显示「开」而实际不生效。
+
 ## v0.4.0 — 发现层重做:按 Claude Code 的逐组件作用域,不再有「项目根」
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.4.0**,

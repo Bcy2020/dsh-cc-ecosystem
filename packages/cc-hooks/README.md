@@ -75,7 +75,7 @@ process.exit(0)
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-loader@0.4.0 dsh-cc-hooks@0.4.0
+dsh plugin --profile <name> add dsh-cc-loader@0.5.0 dsh-cc-hooks@0.5.0
 ```
 <!-- versions:end -->
 

@@ -1,14 +1,14 @@
 # dsh-cc-ecosystem
 
-One install brings the whole [dsh-cc](https://github.com/Bcy2020/dsh-cc-ecosystem) ecosystem into a DSH profile: the shared parse layer plus all five Claude Code adapters, mounted in a single profile layer.
+One install brings the whole [dsh-cc](https://github.com/Bcy2020/dsh-cc-ecosystem) ecosystem into a DSH profile: the shared parse layer plus all six Claude Code adapters, mounted in a single profile layer.
 
-把整个 dsh-cc 生态装进一个 DSH profile:共享解析层 + 五个 Claude Code 适配器,由**一个 profile 层**全部挂载。
+把整个 dsh-cc 生态装进一个 DSH profile:共享解析层 + 六个 Claude Code 适配器,由**一个 profile 层**全部挂载。
 
 版本号是**故意钉死**的:pnpm 11 会拦下发布不满 24 小时的版本,只写包名会静默装到旧版并报成功 —— 见[为什么要带版本号](../../README.md#为什么要带版本号)。Web GUI 里把下面这行 `包名@版本号` 原样填进输入框即可。
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem@0.4.0
+dsh plugin --profile <name> add dsh-cc-ecosystem@0.5.0
 ```
 <!-- versions:end -->
 
@@ -16,20 +16,21 @@ dsh plugin --profile <name> add dsh-cc-ecosystem@0.4.0
 
 | 包 | 作用 |
 |---|---|
-| [dsh-cc-loader](https://www.npmjs.com/package/dsh-cc-loader) | 共享解析层(`.claude` → 内存 IR)。**纯库,不挂载任何插件行** —— 它只是被其余五个包 import |
+| [dsh-cc-loader](https://www.npmjs.com/package/dsh-cc-loader) | 共享解析层(`.claude` → 内存 IR)。**纯库,不挂载任何插件行** —— 它只是被其余六个包 import |
 | [dsh-cc-skills](https://www.npmjs.com/package/dsh-cc-skills) | 技能 / 斜杠命令 / rules |
 | [dsh-cc-permissions](https://www.npmjs.com/package/dsh-cc-permissions) | CC 权限规则(deny → ask → allow)强制 |
 | [dsh-cc-agents](https://www.npmjs.com/package/dsh-cc-agents) | `.claude/agents` 子代理 + `cc_agent` 派发 |
 | [dsh-cc-hooks](https://www.npmjs.com/package/dsh-cc-hooks) | 全部五类 CC hooks |
 | [dsh-cc-mcp](https://www.npmjs.com/package/dsh-cc-mcp) | CC MCP 配置 + `/mcp` 管理面板 |
+| [dsh-cc-memory](https://www.npmjs.com/package/dsh-cc-memory) | CC auto-memory(`MEMORY.md` 索引 + 记忆文件),默认只读,可开写入 |
 
 ## 为什么需要单独一个包
 
 DSH 的 `dsh plugin` 把 `dsh.profile.bundles` 与 **profile 自己的直接依赖**对账 ——
 依赖的依赖(transitive)不会加入 `bundles`,它们的 patch 也永远不会被加载。装
-`dsh-cc-ecosystem` 时,五个适配器都是它的传递依赖,所以**只有这个包自己的 patch 能挂载它们**。
+`dsh-cc-ecosystem` 时,六个适配器都是它的传递依赖,所以**只有这个包自己的 patch 能挂载它们**。
 
-因此本包的 `cordis.patch.yml` 里那五行是各适配器自身 patch 的**副本**。两份配置会各自演化,
+因此本包的 `cordis.patch.yml` 里那六行是各适配器自身 patch 的**副本**。两份配置会各自演化,
 所以 [test/umbrella.test.mjs](../test/umbrella.test.mjs) 逐行比对二者,任何一处 config 漂移
 都会让测试失败(已做变异验证:改动一个值即可让该断言失败)。
 

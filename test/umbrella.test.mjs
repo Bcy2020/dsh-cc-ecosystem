@@ -1,6 +1,6 @@
 // Drift guard for the `dsh-cc-ecosystem` umbrella bundle.
 //
-// The umbrella mounts the five adapters by COPYING each adapter's own
+// The umbrella mounts the six adapters by COPYING each adapter's own
 // `cordis.patch.yml` row into its own patch. A copy is required — installing
 // the umbrella alone never activates the siblings' patches, because `dsh plugin`
 // reconciles `dsh.profile.bundles` against the PROFILE's direct dependencies
@@ -27,13 +27,14 @@ const YAML = require('yaml')
 
 const UMBRELLA = join(root, 'packages', 'cc-ecosystem')
 
-/** The five adapter packages the umbrella mounts, with their directory names. */
+/** The six adapter packages the umbrella mounts, with their directory names. */
 const ADAPTERS = [
   { dir: 'cc-skills', pkg: 'dsh-cc-skills' },
   { dir: 'cc-permissions', pkg: 'dsh-cc-permissions' },
   { dir: 'cc-agents', pkg: 'dsh-cc-agents' },
   { dir: 'cc-hooks', pkg: 'dsh-cc-hooks' },
   { dir: 'cc-mcp', pkg: 'dsh-cc-mcp' },
+  { dir: 'cc-memory', pkg: 'dsh-cc-memory' },
 ]
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'))
@@ -55,7 +56,7 @@ test('umbrella declares dsh.bundle.patch and the file exists', () => {
   readFileSync(join(UMBRELLA, patch), 'utf8')
 })
 
-test('umbrella mounts exactly the five adapters, each once', () => {
+test('umbrella mounts exactly the six adapters, each once', () => {
   assert.equal(umbrellaRows.length, ADAPTERS.length)
   const names = umbrellaRows.map((row) => row.name)
   assert.deepEqual([...names].sort(), ADAPTERS.map((a) => a.pkg).sort())

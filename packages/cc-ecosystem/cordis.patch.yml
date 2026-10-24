@@ -3,7 +3,7 @@
 # The row configs below are COPIES of each adapter's own `cordis.patch.yml`.
 # They have to be copied rather than referenced, because installing the umbrella
 # alone never activates the siblings' own patches: `dsh plugin` reconciles
-# `dsh.profile.bundles` against the PROFILE's direct dependencies, and the five
+# `dsh.profile.bundles` against the PROFILE's direct dependencies, and the six
 # adapters are transitive dependencies of this package, not direct ones. So the
 # umbrella's patch is the only thing that mounts them.
 #
@@ -41,3 +41,8 @@
         idleTimeoutMs: 300000
         toolCallTimeoutMs: 60000
         watchProject: true
+    - id: cc-memory
+      name: 'dsh-cc-memory'
+      config:
+        enabled: true
+        mode: 'read-only'

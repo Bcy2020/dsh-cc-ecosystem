@@ -4,8 +4,8 @@
 
 ## 架构速览(改动前必读)
 
-- **内存 IR,零写路径**:`dsh-cc-loader` 把 `.claude`(项目 + 全局)+ 插件(`plugin.json`/`marketplace.json`)解析成内存 IR,不落盘、不写 `.claude`。单一事实来源永远是 `.claude` 原文。
-- **适配器只消费 IR**:`cc-skills`/`cc-permissions`/`cc-agents`/`cc-hooks`/`cc-mcp` 各自把 IR 的一个组件映射到 DSH(cordis 插件)。适配器**不直接解析 `.claude` 文件**——解析都在 loader。
+- **内存 IR,默认零写路径**:`dsh-cc-loader` 把 `.claude`(项目 + 全局)+ 插件(`plugin.json`/`marketplace.json`)解析成内存 IR,不落盘、不写 `.claude`。单一事实来源永远是 `.claude` 原文。唯一例外是 auto-memory 的**显式可写模式**(`cc-memory`,默认只读)。
+- **适配器只消费 IR**:`cc-skills`/`cc-permissions`/`cc-agents`/`cc-hooks`/`cc-mcp` 各自把 IR 的一个组件映射到 DSH(cordis 插件)。适配器**不直接解析 `.claude` 文件**——解析都在 loader。`cc-memory` 是唯一例外:为了能作为一个文件夹独立挂载,它的 auto-memory 发现层与读写原语放在包内(`src/discovery.js`),但仍照抄 Claude Code 的规则,不改变 `.claude` 语义。
 - **权限是只读桥**:CC `settings.json` 规则在 DSH 上强制,DSH 侧审批**不写回** `.claude`。
 - **不改 DSH 宿主代码(硬约束)**:本生态通过用户 profile 的 `cordis.patch.yml` 以 `file:///` 或 npm 包挂载,依赖 DSH 官方发布包(`@deepseek-ai/*`)只读。任何需要改 `D:\deepseek-harness` 才能工作的改动都不会被接受。
 - 组件分类词汇:DIRECT / ADAPTED / UNSUPPORTED / BLOCKED;UNSUPPORTED 与 BLOCKED 不进适配器。
@@ -60,7 +60,7 @@
 ## CI / 发布
 
 - `.github/workflows/ci.yml`:每次 push/PR 跑单元测试(node 20)
-- `.github/workflows/release.yml`:打 `v*` tag 触发 npm 发布 7 包(按依赖顺序,`dsh-cc-loader` 最先、`dsh-cc-ecosystem` 最后;需仓库 Secret `NPM_TOKEN`,granular token 需覆盖全部 7 个包 + 2FA bypass)
+- `.github/workflows/release.yml`:打 `v*` tag 触发 npm 发布 8 包(按依赖顺序,`dsh-cc-loader` 最先、`dsh-cc-ecosystem` 最后;需仓库 Secret `NPM_TOKEN`,granular token 需覆盖全部 8 个包 + 2FA bypass)
 - 本地预检:`npm test` + `npm run check` + 需要的 `npm pack --dry-run`
 
 ## 提问
