@@ -14,6 +14,7 @@ import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { loadPermissions, evaluateCall, sessionEvents, discoverProjectMcp, projectMcpApproval } from 'dsh-cc-loader'
+import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 import { decideApproval } from './approval.js'
 
 export const name = 'cc-permissions'
@@ -46,6 +47,7 @@ function mcpServerOfTool(toolName) {
 }
 
 export function apply(ctx, config = {}) {
+  announce(ctx, describeSelf(import.meta.url))
   if (config.enabled === false) return
 
   const homeDir = config.homeDir ?? homedir()

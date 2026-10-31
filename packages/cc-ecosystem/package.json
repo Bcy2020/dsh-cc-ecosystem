@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-ecosystem",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "One-install bundle for the whole dsh-cc ecosystem: pulls in dsh-cc-loader plus the six Claude Code adapters (skills, permissions, agents, hooks, mcp, memory) and mounts all of them in one profile layer.",
   "type": "module",
   "dsh": {
@@ -21,13 +21,13 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "dsh-cc-loader": "^0.5.0",
-    "dsh-cc-skills": "^0.5.0",
-    "dsh-cc-permissions": "^0.6.0",
-    "dsh-cc-agents": "^0.5.0",
-    "dsh-cc-hooks": "^0.5.0",
-    "dsh-cc-mcp": "^0.5.0",
-    "dsh-cc-memory": "^0.1.0"
+    "dsh-cc-loader": "^0.6.0",
+    "dsh-cc-skills": "^0.6.0",
+    "dsh-cc-permissions": "^0.7.0",
+    "dsh-cc-agents": "^0.6.0",
+    "dsh-cc-hooks": "^0.6.0",
+    "dsh-cc-mcp": "^0.6.0",
+    "dsh-cc-memory": "^0.2.0"
   },
   "engines": {
     "node": ">=20"

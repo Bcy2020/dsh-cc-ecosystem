@@ -9,6 +9,22 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.6.0 — 匿名安装统计 + 新版本提示
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.6.0**,
+`cc-permissions` **0.7.0**,`dsh-cc-memory` **0.2.0**。
+
+npm 的下载数噪声太大,这一版改为在插件**第一次被 DSH 加载**、以及**每次升级**时各上报一次,拿到真实的启用数与逐包分布。
+
+> **只发一次,没有开关。** 上报只在版本变化时发生,不发心跳;用户第一次使用即视为同意,主 README 的安装命令下方有说明。
+
+- **不属于任何单个包的共享模块**:实现在 `dsh-cc-loader/src/telemetry.js`,六个适配器各调一行 `announce(ctx, describeSelf(import.meta.url))`;`cc-memory` 因此新增对 `dsh-cc-loader` 的依赖。
+- **一次请求带齐**:进程内用 `globalThis` 单例 + 250ms debounce,把同一进程里挂载的所有包合成**一条** hello(漏挂载会补一条)。
+- **只报这些**:包名、版本号、系统大类(Windows / Mac / Linux),以及安装时随机生成的 UUID 的 SHA-256。**不采集** IP(不落库)、路径、用户名、配置、对话。
+- **新版本提示**:服务端返回的版本必须是严格 semver、包名必须在白名单、发版说明必须指向本仓 releases;客户端只按 `包名@版本` 固定拼接,**不下载、不执行任何东西**,点「复制」只写剪贴板。
+- **横幅 5 秒无人操作自动淡出**,鼠标悬停暂停计时;「不再提醒」按版本永久记住,下一个版本重新出现。
+- **服务端 24 小时静默期**:发布不满 24 小时的新版本不下发,避开 pnpm 11 `minimumReleaseAge` 造成的「提示了也装不上」。
+
 ## v0.5.0 — 新增 `dsh-cc-memory`(Claude Code auto-memory)
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.5.0**,

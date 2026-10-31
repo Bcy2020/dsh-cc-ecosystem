@@ -22,6 +22,7 @@ import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { injectedSource, loadClaude, onSessionStart, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
+import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 
 export const name = 'cc-agents'
 export const inject = ['tools', 'subagents']
@@ -56,6 +57,7 @@ export const Config = z.object({
 const PLUGIN_SOURCE = injectedSource('cc-agents')
 
 export function apply(ctx, config = {}) {
+  announce(ctx, describeSelf(import.meta.url))
   const homeDir = config.homeDir ?? homedir()
   const loaderOpts = () => ({
     cwd: process.cwd(), // replaced per call

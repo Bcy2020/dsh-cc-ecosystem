@@ -15,6 +15,7 @@ import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { loadClaude, parseFrontmatter, expandCcToolToDsh, pluginComponentName, sessionEventAt } from 'dsh-cc-loader'
+import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 
 export const name = 'cc-skills'
 export const inject = ['skills']
@@ -47,6 +48,7 @@ export const Config = z.object({
 })
 
 export function apply(ctx, config = {}) {
+  announce(ctx, describeSelf(import.meta.url))
   const homeDir = config.homeDir ?? homedir()
   const loaderOpts = () => ({
     cwd: process.cwd(), // replaced per-call by list/get

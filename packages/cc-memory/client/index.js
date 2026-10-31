@@ -394,9 +394,272 @@ window.__ModuleLoader__.load({ id: "dsh-cc-memory", factory: (require) => {
 
   // ─── plugin ───────────────────────────────────────────────────────────────
 
+  // ─── cc-update notice (begin shared block) ───────────────────────────────
+  // Byte-identical in every client half that ships it (test/update-notice-
+  // client.test.mjs compares the copies). Self-contained on purpose: own
+  // styles, own DOM, own transport, so the host file only adds the
+  // cuShowNotice() call in apply().
+  //
+  // The modal only DISPLAYS commands for the user to copy. It never runs
+  // anything, and the only server-supplied value that reaches a command is a
+  // strict semver; package names come from the allow-list below.
+  var CU_CHANNEL = '/cc-update'
+  var CU_STYLE_ID = 'dsh-cc-update-notice.css'
+  var CU_GLOBAL = '__dshCcUpdateNotice'
+  var CU_PACKAGES = ['dsh-cc-skills', 'dsh-cc-permissions', 'dsh-cc-agents', 'dsh-cc-hooks', 'dsh-cc-mcp', 'dsh-cc-memory']
+  var CU_SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
+  // Banner self-dismisses after this long without interaction; a later launch
+  // shows it again unless the release was explicitly dismissed.
+  var CU_BANNER_MS = 5000
+  var CU_NOTES = 'https://github.com/Bcy2020/dsh-cc-ecosystem/releases/'
+
+  function cuWarn(message, error) {
+    try {
+      if (typeof console !== 'undefined' && console && typeof console.warn === 'function') {
+        console.warn('[cc-update] ' + message + ': ' + String((error && error.message) || error || ''))
+      }
+    } catch (ignored) { /* logging must never break the caller */ }
+  }
+
+  function cuEl(tag, className, text) {
+    var node = document.createElement(tag)
+    if (className) node.className = className
+    if (text !== undefined && text !== null && text !== '') node.textContent = text
+    return node
+  }
+
+  function cuStyles() {
+    if (document.getElementById(CU_STYLE_ID)) return
+    var tag = document.createElement('style')
+    tag.id = CU_STYLE_ID
+    tag.textContent = [
+      // Liquid glass: a low-opacity tint (the page behind stays visible through
+      // it), heavy blur + saturation, a specular sheen, and a gradient hairline
+      // rim drawn with a mask so the edge reads as glass thickness.
+      '@keyframes ccu-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}',
+      '@media (prefers-reduced-motion:reduce){.ccu-banner,.ccu-modal{animation:none}}',
+      '.ccu-banner{position:fixed;right:20px;bottom:20px;z-index:1120;display:flex;align-items:center;gap:12px;padding:12px 14px 12px 20px;border-radius:20px;background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-bg-layer-2,#fff) 68%,transparent),color-mix(in srgb,var(--dsw-alias-bg-layer-2,#fff) 38%,transparent));-webkit-backdrop-filter:blur(32px) saturate(180%) brightness(1.24);backdrop-filter:blur(32px) saturate(180%) brightness(1.24);box-shadow:0 18px 44px -12px rgb(0 0 0 / 30%),0 1px 2px rgb(0 0 0 / 6%),inset 0 1px 0 rgb(255 255 255 / 62%),inset 0 -1px 0 rgb(255 255 255 / 14%);font-family:var(--dsw-font-family,system-ui,-apple-system,"Segoe UI",sans-serif);font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary,#0f1115);animation:ccu-in .22s cubic-bezier(.2,.8,.2,1);transition:opacity .34s ease,transform .34s ease}',
+      '.ccu-banner-out{opacity:0;transform:translateY(8px) scale(.985);pointer-events:none}',
+      '.ccu-banner::before{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(90% 130% at 18% 0%,rgb(255 255 255 / 55%),rgb(255 255 255 / 0%) 62%);pointer-events:none}',
+      '.ccu-banner::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;background:linear-gradient(150deg,rgb(255 255 255 / 88%),rgb(255 255 255 / 12%) 36%,rgb(255 255 255 / 0%) 62%,rgb(255 255 255 / 34%));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}',
+      '.ccu-banner-text{position:relative;flex:1 1 auto;min-width:0}',
+      '.ccu-btn{position:relative;appearance:none;border:1px solid color-mix(in srgb,var(--dsw-alias-label-primary,#0f1115) 12%,transparent);background:linear-gradient(180deg,rgb(255 255 255 / 52%),rgb(255 255 255 / 26%));color:inherit;border-radius:999px;padding:6px 16px;font-size:12px;line-height:18px;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgb(0 0 0 / 10%),inset 0 1px 0 rgb(255 255 255 / 65%),inset 0 -1px 0 rgb(0 0 0 / 6%);transition:transform .12s ease,filter .12s ease}',
+      '.ccu-btn:hover{filter:brightness(1.1)}',
+      '.ccu-btn:active{transform:scale(.97)}',
+      '.ccu-btn-primary{background:linear-gradient(180deg,rgb(108 168 255 / 96%),rgb(47 109 246 / 96%));border-color:rgb(255 255 255 / 45%);color:#fff;box-shadow:0 8px 20px -6px rgb(47 109 246 / 55%),inset 0 1px 0 rgb(255 255 255 / 55%),inset 0 -1px 0 rgb(0 0 0 / 10%)}',
+      '.ccu-btn-primary:hover{filter:brightness(1.08)}',
+      '.ccu-ghost{appearance:none;border:0;background:transparent;color:color-mix(in srgb,var(--dsw-alias-label-primary,#0f1115) 62%,transparent);cursor:pointer;font-size:12px;padding:6px 12px;border-radius:999px;font-family:inherit;transition:background-color .12s ease,color .12s ease}',
+      '.ccu-ghost:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary,#0f1115) 8%,transparent);color:var(--dsw-alias-label-primary,#0f1115)}',
+      '.ccu-overlay{position:fixed;inset:0;z-index:1130;display:flex;align-items:center;justify-content:center;padding:24px}',
+      '.ccu-backdrop{position:absolute;inset:0;background:rgb(6 8 12 / 46%);-webkit-backdrop-filter:blur(7px) saturate(110%);backdrop-filter:blur(7px) saturate(110%)}',
+      '.ccu-modal{position:relative;width:580px;max-width:100%;max-height:82vh;overflow:auto;border-radius:30px;padding:26px 26px 22px;counter-reset:ccu-step;background:linear-gradient(145deg,color-mix(in srgb,var(--dsw-alias-bg-layer-2,#fff) 46%,transparent),color-mix(in srgb,var(--dsw-alias-bg-layer-2,#fff) 20%,transparent));-webkit-backdrop-filter:blur(54px) saturate(175%) brightness(1.55);backdrop-filter:blur(54px) saturate(175%) brightness(1.55);box-shadow:0 0 0 1px rgb(255 255 255 / 30%),0 0 90px 14px rgb(255 255 255 / 24%),0 44px 110px -20px rgb(0 0 0 / 55%),inset 0 1px 0 rgb(255 255 255 / 78%),inset 0 -1px 0 rgb(255 255 255 / 18%);color:var(--dsw-alias-label-primary,#0f1115);font-family:var(--dsw-font-family,system-ui,-apple-system,"Segoe UI",sans-serif);font-size:13px;line-height:20px;animation:ccu-in .22s cubic-bezier(.2,.8,.2,1)}',
+      '.ccu-modal::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(120% 62% at 50% -14%,rgb(255 255 255 / 52%),rgb(255 255 255 / 0%) 64%)}',
+      '.ccu-modal::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;background:linear-gradient(155deg,rgb(255 255 255 / 92%),rgb(255 255 255 / 14%) 30%,rgb(255 255 255 / 0%) 58%,rgb(255 255 255 / 30%));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}',
+      '.ccu-modal h2{position:relative;margin:0 0 4px;font-size:18px;line-height:26px;font-weight:650;letter-spacing:.1px}',
+      '.ccu-sub{position:relative;margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#61666b)}',
+      '.ccu-step{position:relative;counter-increment:ccu-step;display:flex;align-items:center;gap:10px;margin:20px 0 8px;font-weight:600;font-size:13px}',
+      '.ccu-step::before{content:counter(ccu-step);display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:600;color:var(--dsw-alias-link-primary,#2f6df6);background:color-mix(in srgb,var(--dsw-alias-link-primary,#2f6df6) 13%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-link-primary,#2f6df6) 26%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 70%),0 1px 2px rgb(0 0 0 / 6%)}',
+      '.ccu-cmd{position:relative;display:flex;align-items:center;gap:10px;margin:6px 0;padding:10px 10px 10px 16px;border-radius:18px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#0f1115) 6%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-label-primary,#0f1115) 9%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 45%);font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12.5px}',
+      '.ccu-cmd code{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}',
+      '.ccu-actions{position:relative;display:flex;justify-content:flex-end;margin-top:22px}',
+      '.ccu-foot{position:relative;margin:16px 0 0;font-size:11.5px;color:var(--dsw-alias-label-tertiary,#8a9097)}',
+      '.ccu-link{color:var(--dsw-alias-link-primary,#4c7dff);text-decoration:none}',
+      '.ccu-link:hover{text-decoration:underline}',
+    ].join('\n')
+    document.head.appendChild(tag)
+  }
+
+  function cuCall(endpoint, method, payload) {
+    try {
+      if (typeof fetch !== 'function') return Promise.resolve(null)
+      var init = { method: method, headers: { 'x-cc-update': '1' }, credentials: 'same-origin' }
+      if (payload !== undefined) {
+        init.headers['content-type'] = 'application/json'
+        init.body = JSON.stringify(payload)
+      }
+      return fetch(CU_CHANNEL + '/' + endpoint, init).then(function (response) {
+        return response.json()
+      }).then(function (result) {
+        return result && result.ok === true ? result.value : null
+      }, function () { return null })
+    } catch (error) {
+      return Promise.resolve(null)
+    }
+  }
+
+  function cuValidVersion(value) {
+    return typeof value === 'string' && CU_SEMVER.test(value)
+  }
+
+  // Exactly what the install box accepts: `name@version`, nothing else.
+  function cuTargets(state) {
+    var update = state && state.update
+    if (!update || !cuValidVersion(update.bundle)) return []
+    if (state.bundleUser === true) {
+      return ['dsh-cc-ecosystem@' + update.bundle]
+    }
+    var out = []
+    var list = Array.isArray(update.updates) ? update.updates : []
+    for (var index = 0; index < list.length; index += 1) {
+      var entry = list[index]
+      if (!entry || CU_PACKAGES.indexOf(entry.name) < 0 || !cuValidVersion(entry.latest)) continue
+      out.push(entry.name + '@' + entry.latest)
+    }
+    return out
+  }
+
+  function cuCopy(text, button) {
+    try {
+      if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(function () {
+          button.textContent = '已复制'
+        }, function () { cuWarn('clipboard write failed') })
+        return
+      }
+    } catch (error) { cuWarn('clipboard unavailable', error) }
+    try {
+      var area = document.createElement('textarea')
+      area.value = text
+      area.setAttribute('readonly', 'readonly')
+      area.style.position = 'fixed'
+      area.style.opacity = '0'
+      document.body.appendChild(area)
+      area.select()
+      document.execCommand('copy')
+      document.body.removeChild(area)
+      button.textContent = '已复制'
+    } catch (error) { cuWarn('copy fallback failed', error) }
+  }
+
+  function cuOpenModal(state) {
+    var update = state.update
+    var overlay = cuEl('div', 'ccu-overlay')
+    var backdrop = cuEl('div', 'ccu-backdrop')
+    var modal = cuEl('div', 'ccu-modal')
+    modal.setAttribute('role', 'dialog')
+    modal.setAttribute('aria-label', 'dsh-cc-ecosystem 更新')
+    overlay.appendChild(backdrop)
+    overlay.appendChild(modal)
+
+    var onKey = function (event) {
+      if (event && event.key === 'Escape') { event.stopPropagation(); close() }
+    }
+    var close = function () {
+      try { document.removeEventListener('keydown', onKey, true) } catch (ignored) { /* gone */ }
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay)
+    }
+    backdrop.addEventListener('click', close)
+
+    modal.appendChild(cuEl('h2', '', 'dsh-cc-ecosystem ' + update.bundle + ' 可用'))
+    var sub = cuEl('p', 'ccu-sub', '当前 ' + (state.current || '未知') + '。')
+    if (typeof update.notes === 'string' && update.notes.indexOf(CU_NOTES) === 0) {
+      var link = cuEl('a', 'ccu-link', '发版说明')
+      link.href = update.notes
+      link.target = '_blank'
+      link.rel = 'noreferrer noopener'
+      sub.appendChild(document.createTextNode(' '))
+      sub.appendChild(link)
+    }
+    modal.appendChild(sub)
+
+    modal.appendChild(cuEl('div', 'ccu-step', '先在插件管理里卸载旧版本'))
+    modal.appendChild(cuEl('div', 'ccu-step', '把这个填进安装框'))
+    var targets = cuTargets(state)
+    if (targets.length === 0) modal.appendChild(cuEl('p', 'ccu-sub', '没有可用的升级目标。'))
+    for (var index = 0; index < targets.length; index += 1) {
+      var row = cuEl('div', 'ccu-cmd')
+      row.appendChild(cuEl('code', '', targets[index]))
+      var copy = cuEl('button', 'ccu-btn', '复制')
+      copy.type = 'button'
+      ;(function (target, button) {
+        button.addEventListener('click', function () { cuCopy(target, button) })
+      })(targets[index], copy)
+      row.appendChild(copy)
+      modal.appendChild(row)
+    }
+    var actions = cuEl('div', 'ccu-actions')
+    var closeButton = cuEl('button', 'ccu-btn', '关闭')
+    closeButton.type = 'button'
+    closeButton.addEventListener('click', close)
+    actions.appendChild(closeButton)
+    modal.appendChild(actions)
+    modal.appendChild(cuEl('p', 'ccu-foot', '只显示要填进安装框的内容，不会替你下载或执行任何东西。'))
+    document.addEventListener('keydown', onKey, true)
+    document.body.appendChild(overlay)
+  }
+
+  function cuFadeOut(banner) {
+    if (!banner || !banner.parentNode) return
+    banner.classList.add('ccu-banner-out')
+    setTimeout(function () {
+      if (banner.parentNode) banner.parentNode.removeChild(banner)
+    }, 360)
+  }
+
+  function cuShowBanner(state) {
+    var banner = cuEl('div', 'ccu-banner')
+    banner.setAttribute('role', 'status')
+    banner.appendChild(cuEl('div', 'ccu-banner-text', 'dsh-cc-ecosystem ' + state.update.bundle + ' 可用'))
+
+    var timer = null
+    var stop = function () {
+      if (timer !== null) { clearTimeout(timer); timer = null }
+    }
+    var arm = function () {
+      stop()
+      timer = setTimeout(function () { timer = null; cuFadeOut(banner) }, CU_BANNER_MS)
+    }
+
+    var open = cuEl('button', 'ccu-btn ccu-btn-primary', '查看')
+    open.type = 'button'
+    open.addEventListener('click', function () {
+      stop()
+      cuFadeOut(banner)
+      try { cuOpenModal(state) } catch (error) { cuWarn('modal failed', error) }
+    })
+    banner.appendChild(open)
+    var later = cuEl('button', 'ccu-ghost', '不再提醒')
+    later.type = 'button'
+    later.addEventListener('click', function () {
+      stop()
+      cuFadeOut(banner)
+      // Stored per release: a newer release has a different bundle version and
+      // therefore appears again.
+      cuCall('dismiss', 'POST', { version: state.update.bundle })
+    })
+    banner.appendChild(later)
+    // Hovering pauses the countdown so reading it is never cut short.
+    banner.addEventListener('mouseenter', stop)
+    banner.addEventListener('mouseleave', arm)
+    document.body.appendChild(banner)
+    arm()
+  }
+
+  /** Called from apply(); at most one banner per page load. */
+  function cuShowNotice() {
+    try {
+      if (typeof document === 'undefined' || document === null) return
+      var existing = window[CU_GLOBAL]
+      if (existing && existing.shown === true) return
+      window[CU_GLOBAL] = { shown: true }
+      cuStyles()
+      cuCall('state', 'GET').then(function (state) {
+        if (state === null || typeof state !== 'object') return
+        var update = state.update
+        if (update === null || typeof update !== 'object' || !cuValidVersion(update.bundle)) return
+        if (state.dismissed === update.bundle) return
+        cuShowBanner(state)
+      })
+    } catch (error) {
+      cuWarn('notice failed', error)
+    }
+  }
+  // ─── cc-update notice (end shared block) ─────────────────────────────────
+
   function apply(ctx) {
     try {
       styleEl = installStyles()
+      try { cuShowNotice() } catch (error) { warn('update notice failed', error) }
       if (ctx && typeof ctx.effect === 'function') {
         ctx.effect(function () {
           return function () {

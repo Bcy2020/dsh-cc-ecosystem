@@ -14,9 +14,11 @@
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem@0.5.0
+dsh plugin --profile <name> add dsh-cc-ecosystem@0.6.0
 ```
 <!-- versions:end -->
+
+> **关于匿名安装统计**：这些包在被 DSH 第一次使用时，以及每次升级到新版本时，会向我们发送一次统计 —— 只有包名、版本号和系统类型（Windows / Mac / Linux），用来知道有多少人在用。不包含任何能联系到你个人的信息，也不会读取你的项目、配置或对话。
 
 装完重启 DSH。Web GUI 里把上面那段 `包名@版本号` 原样填进输入框即可。
 
@@ -28,8 +30,8 @@ dsh plugin --profile <name> add dsh-cc-ecosystem@0.5.0
 | 输入 | 实际装到 | 原因 |
 |---|---|---|
 | `dsh-cc-ecosystem` / `@latest` | 上一个版本 | dist-tag 不豁免 |
-| `dsh-cc-ecosystem@^0.5.0` | 新版本 | 范围内只剩一个候选时才豁免 —— 下一版即失效 |
-| `dsh-cc-ecosystem@0.5.0` | 新版本 | 只有这种写法稳定 |
+| `dsh-cc-ecosystem@^0.6.0` | 新版本 | 范围内只剩一个候选时才豁免 —— 下一版即失效 |
+| `dsh-cc-ecosystem@0.6.0` | 新版本 | 只有这种写法稳定 |
 
 不想受这条策略约束，可在 profile 的 `pnpm-workspace.yaml` 里设 `minimumReleaseAge: 0`，或用 `minimumReleaseAgeExclude` 逐版本豁免（每发一版都要补，容易腐烂）。
 </details>
@@ -72,7 +74,7 @@ dsh plugin --profile <name> add dsh-cc-ecosystem@0.5.0
 
 | 你的 DSH 版本 | 用哪个 |
 |---|---|
-| `0.1.5-rc.2` 或 `0.2.0-rc.2` | **`v0.5.0`（当前）** —— 一条版本线同时兼容两代 |
+| `0.1.5-rc.2` 或 `0.2.0-rc.2` | **`v0.6.0`（当前）** —— 一条版本线同时兼容两代 |
 | `0.1.0-rc.7` ~ `0.1.1-rc.2` | `v0.1.x`（已停止维护） |
 
 - **Hooks 事件未全覆盖**：Claude Code 的 31 个事件中，11 个有对应扩展点会真正触发；其余会被解析但不运行。
