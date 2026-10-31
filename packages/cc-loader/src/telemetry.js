@@ -365,14 +365,18 @@ function scheduleHello(hub, endpoint, options) {
   if (hub.pending !== null) return hub.pending
   let resolve
   hub.pending = new Promise((done) => { resolve = done })
+  const delay = options.debounceMs ?? DEBOUNCE_MS
   hub.timer = setTimeout(() => {
     hub.timer = null
     flush(hub, endpoint, options).catch(() => {}).then(() => {
       hub.pending = null
       resolve()
     })
-  }, options.debounceMs ?? DEBOUNCE_MS)
-  if (typeof hub.timer?.unref === 'function') hub.timer.unref()
+  }, delay)
+  // Unref only the production debounce: a short-lived process may exit before
+  // it fires. A zero delay is the "nothing to batch" case, where the timer is
+  // the only thing the returned promise is waiting on.
+  if (delay > 0 && typeof hub.timer?.unref === 'function') hub.timer.unref()
   return hub.pending
 }
 
