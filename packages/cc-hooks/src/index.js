@@ -48,6 +48,7 @@ import {
   runPromptHook,
 } from './executors.js'
 import { ccBucket, injectedSource, onSessionStart, sessionLastEvent } from 'dsh-cc-loader'
+import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 
 export const name = 'cc-hooks'
 // `shell` is required to run hooks; the rest are read opportunistically via
@@ -107,6 +108,7 @@ function assertPositiveInteger(name, value) {
 }
 
 export function apply(ctx, config = {}) {
+  announce(ctx, describeSelf(import.meta.url))
   if (config.enabled === false) return
 
   // Validate before discovery so a bad value cannot be hidden by an early return.

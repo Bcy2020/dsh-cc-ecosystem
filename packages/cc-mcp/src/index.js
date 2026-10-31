@@ -28,6 +28,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import Schema from '@deepseek-ai/schemastery'
 import { discoverMcpScopes, discoverPluginRoot, fullAncestors } from 'dsh-cc-loader'
+import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 
 // Re-exported for callers that need the dir-basename fallback name without a
 // manifest (discoverPluginRoot prefers manifest `name`; pluginNameOf is the
@@ -1056,6 +1057,7 @@ async function wireAgent(ctx, agent, config) {
 }
 
 export function apply(ctx, config) {
+  announce(ctx, describeSelf(import.meta.url))
   // apply() must never throw synchronously: a throw here kills the host.
   activeConfig = config
   // Idempotent wiring: `agent/created` covers sessions started after this

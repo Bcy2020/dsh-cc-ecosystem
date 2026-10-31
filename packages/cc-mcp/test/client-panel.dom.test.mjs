@@ -150,7 +150,16 @@ async function runSuite({ JSDOM }) {
     const previousFetch = globalThis.fetch
     const requests = []
     globalThis.fetch = async (url, init) => {
-      const endpoint = String(url).replace('/cc-mcp/', '')
+      const target = String(url)
+      // The update notice polls its own route at boot; it is not part of this
+      // panel's contract, so answer it separately and keep `requests` clean.
+      if (target.indexOf('/cc-update/') === 0) {
+        return new Response(JSON.stringify({
+          ok: true,
+          value: { installed: [], bundleUser: false, update: null, dismissed: null },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      const endpoint = target.replace('/cc-mcp/', '')
       requests.push({ endpoint, init })
       const body = JSON.parse(init.body === '' ? '{}' : init.body)
       return new Response(JSON.stringify(await host.dispatch(endpoint, body)), {

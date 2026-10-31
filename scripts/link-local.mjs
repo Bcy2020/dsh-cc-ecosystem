@@ -31,7 +31,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const loaderDir = join(root, 'packages', 'cc-loader')
 
 /** Packages that depend on dsh-cc-loader. */
-const DEPENDENTS = ['cc-skills', 'cc-permissions', 'cc-agents', 'cc-hooks', 'cc-mcp', 'cc-ecosystem']
+const DEPENDENTS = ['cc-skills', 'cc-permissions', 'cc-agents', 'cc-hooks', 'cc-mcp', 'cc-memory', 'cc-ecosystem']
 
 if (!existsSync(join(loaderDir, 'package.json'))) {
   console.error(`link-local: no packages/cc-loader at ${loaderDir}`)

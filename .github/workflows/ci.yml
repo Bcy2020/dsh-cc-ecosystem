@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          for d in cc-skills cc-permissions cc-agents cc-hooks cc-mcp; do
+          for d in cc-skills cc-permissions cc-agents cc-hooks cc-mcp cc-memory; do
             (cd "packages/$d" && npm pkg set 'dependencies.dsh-cc-loader=file:../cc-loader')
           done
           # The umbrella depends on all six adapters AND the loader. On a

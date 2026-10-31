@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-memory",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Load Claude Code's auto-memory (MEMORY.md index + ~/.claude/projects/<slug>/memory/*.md) into DSH as a per-request system-prompt section, with two runtime switches: off entirely, or read-only vs read-write memory tools. Ships the /cc-memory switch panel as a client half. Discovery, index budgeting and truncation follow the Claude Code CLI.",
   "type": "module",
   "main": "src/index.js",
@@ -31,6 +31,9 @@
     "auto-memory"
   ],
   "license": "MIT",
+  "dependencies": {
+    "dsh-cc-loader": "^0.6.0"
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/schemastery": "3.18.2"

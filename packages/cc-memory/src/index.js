@@ -15,6 +15,7 @@
 // the index tracks disk without a restart (CC re-reads per request too).
 
 import z from '@deepseek-ai/schemastery'
+import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 import { MAX_INDEX_CHARS, MAX_INDEX_LINES, MAX_MEMORY_BYTES, MAX_MEMORY_FILES } from './discovery.js'
 import { MemoryRuntime } from './runtime.js'
 import { registerPanelRoute } from './route.js'
@@ -53,6 +54,7 @@ export const Config = z.object({
  * @param {object} [config] - validated {@link Config}.
  */
 export function apply(ctx, config = {}) {
+  announce(ctx, describeSelf(import.meta.url))
   try {
     const runtime = new MemoryRuntime(ctx, config)
     runtime.start()
