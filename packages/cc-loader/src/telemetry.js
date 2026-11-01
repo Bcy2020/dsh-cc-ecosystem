@@ -19,10 +19,18 @@
 // pnpm 11's minimumReleaseAge would otherwise resolve them back to the older
 // version — silently, with exit code 0.
 //
+// A quiet install (versions unchanged) sends no hello, so it would never hear
+// about a newer release. Once a day it asks a second, write-free endpoint
+// instead. That request carries no install id and no OS: it records nothing,
+// so there is nothing to identify.
+//
 // Wire contract (the receiver is deployed separately, outside this repository):
 //   POST {endpoint}/hello
 //     { schema, install, os, packages: [{ name, version }] }
 //   -> { bundle, notes?, updates: [{ name, latest }] }
+//   POST {endpoint}/cc-update
+//     { schema, packages: [{ name, version }] }
+//   -> same response shape; nothing is stored.
 //   `updates` must list only packages whose latest version is newer than the
 //   submitted one; `notes` must be a URL under the project's releases path.
 //   The client re-validates all of it and ignores anything else.
@@ -62,6 +70,10 @@ const NOTES_ORIGIN = 'https://github.com/Bcy2020/dsh-cc-ecosystem/releases/'
 
 /** How long to collect mounts before sending the one hello. */
 const DEBOUNCE_MS = 250
+/** A quiet install re-asks this often; the answer is what the banner shows. */
+export const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
+/** How long the GUI's first state request waits for that answer. */
+const NOTICE_WAIT_MS = 6000
 /** Hard cap on the hello request. Generous: the request is fire-and-forget,
  *  and some networks need several seconds just to establish the connection. */
 const REQUEST_TIMEOUT_MS = 5000
@@ -124,7 +136,7 @@ export function defaultStatePath() {
  * @param {string} path
  * @returns {{ version: number, installId: string, reported: Record<string, string>,
  *   latest: null | { bundle: string, notes: string, updates: { name: string, latest: string }[] },
- *   dismissedVersion: string | null, notifiedVersion: string | null }}
+ *   checkedAt: number, dismissedVersion: string | null, notifiedVersion: string | null }}
  */
 export function loadState(path) {
   const empty = {
@@ -132,6 +144,7 @@ export function loadState(path) {
     installId: '',
     reported: {},
     latest: null,
+    checkedAt: 0,
     dismissedVersion: null,
     notifiedVersion: null,
   }
@@ -160,6 +173,8 @@ export function loadState(path) {
     installId: typeof data.installId === 'string' ? data.installId : '',
     reported,
     latest: pruneUpdate(normaliseUpdate(data.latest), reported),
+    checkedAt: typeof data.checkedAt === 'number' && Number.isFinite(data.checkedAt) && data.checkedAt > 0
+      ? data.checkedAt : 0,
     dismissedVersion: typeof data.dismissedVersion === 'string' && SEMVER.test(data.dismissedVersion)
       ? data.dismissedVersion : null,
     notifiedVersion: typeof data.notifiedVersion === 'string' && SEMVER.test(data.notifiedVersion)
@@ -403,9 +418,38 @@ async function flush(hub, endpoint, options) {
     // offline now is counted on a later start instead of never.
     for (const entry of packages) hub.state.reported[entry.name] = entry.version
     hub.state.latest = pruneUpdate(normaliseUpdate(answer), hub.state.reported)
+    hub.state.checkedAt = Date.now()
     saveState(hub.statePath, hub.state)
+  } else if (isCheckDue(hub.state)) {
+    await checkForUpdate(hub, endpoint, options)
   }
   logNotice(hub)
+}
+
+/** A quiet install asks for news once a day, never on every start. */
+function isCheckDue(state) {
+  return Date.now() - state.checkedAt >= UPDATE_CHECK_INTERVAL_MS
+}
+
+/**
+ * The write-free half of the pair: same installed set in, newest mature
+ * release out. No install id, no OS — the receiver stores nothing.
+ */
+async function checkForUpdate(hub, endpoint, options) {
+  const packages = [...hub.selfs.entries()].map(([name, version]) => ({ name, version }))
+  hub.inflight = requestJson(`${endpoint}/cc-update`, {
+    body: { schema: SCHEMA_VERSION, packages },
+    fetchImpl: options.fetchImpl,
+    timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
+  })
+  const answer = await hub.inflight
+  hub.inflight = null
+  // A failed check leaves checkedAt alone, so the next start tries again
+  // instead of going quiet for a day on one bad request.
+  if (answer === undefined) return
+  hub.state.latest = pruneUpdate(normaliseUpdate(answer), hub.state.reported)
+  hub.state.checkedAt = Date.now()
+  saveState(hub.statePath, hub.state)
 }
 
 async function requestJson(url, options) {
@@ -493,19 +537,24 @@ function registerNoticeRoute(ctx, hub, options) {
   }
 }
 
-/** Wait for an in-flight hello so the first GUI load sees fresh state. */
-async function settle(hub, timeoutMs = 2000) {
-  if (hub.inflight === null) return
+/**
+ * Wait for the scheduled request so the first GUI load sees fresh state.
+ * Covers the debounce too: the answer may not have left the machine yet when
+ * the window asks.
+ */
+async function settle(hub, timeoutMs = NOTICE_WAIT_MS) {
+  const pending = hub.pending
+  if (pending === null || pending === undefined) return
   try {
     await Promise.race([
-      hub.inflight,
+      pending,
       new Promise((resolve) => {
         const timer = setTimeout(resolve, timeoutMs)
         if (typeof timer?.unref === 'function') timer.unref()
       }),
     ])
   } catch {
-    /* the hello failure is already absorbed in flush() */
+    /* the failure is already absorbed in flush() */
   }
 }
 

@@ -21,6 +21,7 @@ import {
   noticeSnapshot,
   osFamily,
   saveState,
+  UPDATE_CHECK_INTERVAL_MS,
 } from '../packages/cc-loader/src/telemetry.js'
 
 const NOTES = 'https://github.com/Bcy2020/dsh-cc-ecosystem/releases/tag/v0.6.0'
@@ -246,6 +247,130 @@ test('tests never reach the network unless explicitly allowed', async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('a quiet install asks for news once a day, without identifying itself', async () => {
+  const { dir, path } = tempState()
+  const ctx = quietContext()
+  const seeded = loadState(path)
+  seeded.reported = { 'dsh-cc-skills': '0.6.0' }
+  seeded.checkedAt = 0
+  saveState(path, seeded)
+
+  const calls = []
+  const options = {
+    statePath: path,
+    endpoint: 'https://receiver.test/v1',
+    debounceMs: 0,
+    allowInTest: true,
+    platform: 'win32',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) })
+      return reply({ bundle: '0.6.1', notes: NOTES, updates: [{ name: 'dsh-cc-skills', latest: '0.6.1' }] })
+    },
+  }
+  try {
+    await announce(ctx, { name: 'dsh-cc-skills', version: '0.6.0' }, options)
+
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url, 'https://receiver.test/v1/cc-update')
+    assert.deepEqual(calls[0].body, {
+      schema: 1,
+      packages: [{ name: 'dsh-cc-skills', version: '0.6.0' }],
+    })
+    for (const field of ['install', 'os', 'cwd', 'user', 'host']) {
+      assert.equal(Object.hasOwn(calls[0].body, field), false, `${field} must not be sent`)
+    }
+
+    const state = loadState(path)
+    assert.equal(state.latest.bundle, '0.6.1')
+    assert.ok(state.checkedAt > 0, 'a delivered check is stamped')
+    assert.deepEqual(state.reported, { 'dsh-cc-skills': '0.6.0' }, 'a check must not rewrite the report')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a second start within the day asks nothing', async () => {
+  const { dir, path } = tempState()
+  const ctx = quietContext()
+  const seeded = loadState(path)
+  seeded.reported = { 'dsh-cc-skills': '0.6.0' }
+  seeded.checkedAt = Date.now()
+  saveState(path, seeded)
+
+  let calls = 0
+  try {
+    await announce(ctx, { name: 'dsh-cc-skills', version: '0.6.0' }, {
+      statePath: path,
+      endpoint: 'https://receiver.test/v1',
+      debounceMs: 0,
+      allowInTest: true,
+      fetchImpl: async () => { calls += 1; return reply(UPDATE) },
+    })
+    assert.equal(calls, 0)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an upgrade reports instead of checking, in one request', async () => {
+  const { dir, path } = tempState()
+  const ctx = quietContext()
+  const seeded = loadState(path)
+  seeded.reported = { 'dsh-cc-skills': '0.6.0' }
+  seeded.checkedAt = 0
+  saveState(path, seeded)
+
+  const calls = []
+  try {
+    await announce(ctx, { name: 'dsh-cc-skills', version: '0.6.1' }, {
+      statePath: path,
+      endpoint: 'https://receiver.test/v1',
+      debounceMs: 0,
+      allowInTest: true,
+      fetchImpl: async (url, init) => {
+        calls.push(url)
+        return reply(UPDATE)
+      },
+    })
+    assert.deepEqual(calls, ['https://receiver.test/v1/hello'])
+    assert.ok(loadState(path).checkedAt > 0, 'the answer to a hello counts as a check')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a failed check stays due for the next start', async () => {
+  const { dir, path } = tempState()
+  const ctx = quietContext()
+  const seeded = loadState(path)
+  seeded.reported = { 'dsh-cc-skills': '0.6.0' }
+  seeded.checkedAt = 0
+  saveState(path, seeded)
+
+  let calls = 0
+  const options = {
+    statePath: path,
+    endpoint: 'https://receiver.test/v1',
+    debounceMs: 0,
+    allowInTest: true,
+    fetchImpl: async () => { calls += 1; throw new Error('offline') },
+  }
+  try {
+    await announce(ctx, { name: 'dsh-cc-skills', version: '0.6.0' }, options)
+    assert.equal(calls, 1)
+    assert.equal(loadState(path).checkedAt, 0, 'an unanswered check is not stamped')
+
+    await announce(ctx, { name: 'dsh-cc-skills', version: '0.6.0' }, options)
+    assert.equal(calls, 2, 'the next start tries again')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the check interval is a day', () => {
+  assert.equal(UPDATE_CHECK_INTERVAL_MS, 24 * 60 * 60 * 1000)
 })
 
 test('the notice route reports state, persists dismissal, and refuses strangers', async () => {
