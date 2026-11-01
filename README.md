@@ -14,7 +14,7 @@
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem@0.6.0
+dsh plugin --profile <name> add dsh-cc-ecosystem@0.6.1
 ```
 <!-- versions:end -->
 
