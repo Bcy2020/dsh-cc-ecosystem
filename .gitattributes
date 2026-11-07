@@ -1,0 +1,6 @@
+# Git for Windows checks text files out with CRLF by default, which made
+# `npm run check` fail on the Windows runner: scripts/sync-readme-versions.mjs
+# compares blocks built with LF against a CRLF working tree and reports every
+# README as stale. .editorconfig already asks for LF, but editors honour it and
+# Git does not.
+* text=auto eol=lf
