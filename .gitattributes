@@ -1,0 +1,6 @@
+# Normalize every text file to LF, on every platform. Without this a Windows
+# checkout (Git for Windows defaults to core.autocrlf=true) rewrites LF blobs
+# to CRLF in the working tree, and scripts that compare on-disk text against
+# text they build with \n — e.g. scripts/sync-readme-versions.mjs --check —
+# fail spuriously. PNG assets are auto-detected as binary and left untouched.
+* text=auto eol=lf
