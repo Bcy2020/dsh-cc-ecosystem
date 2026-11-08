@@ -97,7 +97,7 @@ dsh plugin --profile <name> add dsh-cc-ecosystem@0.6.1
 | [dsh-cc-memory](https://www.npmjs.com/package/dsh-cc-memory) | Auto-memory 与 `/cc-memory` 面板 |
 | [dsh-cc-loader](https://www.npmjs.com/package/dsh-cc-loader) | 共享解析层（自动安装，非插件） |
 
-从本地 checkout 热挂载的开发流程见 [DSHCCECO-INSTALL-SKILL.md](DSHCCECO-INSTALL-SKILL.md)；变更记录见 [CHANGELOG](CHANGELOG.md)。
+本地 checkout 的挂载示例见各适配器 README 里的 `cordis.patch.yml` 片段；变更记录见 [CHANGELOG](CHANGELOG.md)。
 </details>
 
 ## License

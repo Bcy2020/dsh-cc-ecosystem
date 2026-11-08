@@ -76,7 +76,7 @@
 
 涉及界面的改动附截图;纯行为改动贴终端输出或日志片段。**截图请遮掉个人信息**——项目路径、对话内容、token。
 
-本地 checkout 怎么挂进 DSH,见 `DSHCCECO-INSTALL-SKILL.md`。挂上之后**必须重启 DSH**才生效;改完不重启就下结论,是这个生态里最常见的误判来源。
+本地 checkout 怎么挂进 DSH,见各适配器 README 里的 `cordis.patch.yml` 片段(如 `packages/cc-hooks/README.md`、`packages/cc-mcp/README.md`、`packages/cc-memory/README.md`)。挂上之后**必须重启 DSH**才生效;改完不重启就下结论,是这个生态里最常见的误判来源。
 
 ### 关于 AI 参与的代码
 
@@ -89,7 +89,7 @@ AI 写的代码可以接受,与手写的按同一套标准验收,不必特别声
 ## 文档策略
 
 - `docs/` 是**内部工作文档,gitignored,不提交**(含恢复快照、研究笔记)
-- 公开文档:根 `README.md` + 各包 `README.md` + `DSHCCECO-INSTALL-SKILL.md`(实装指南)
+- 公开文档:根 `README.md` + 各包 `README.md`
 - 新包必须带 README;新配置项同步更新对应 README 表格
 
 ## CI / 发布
