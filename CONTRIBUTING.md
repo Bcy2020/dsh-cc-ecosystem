@@ -103,7 +103,7 @@ AI 写的代码可以接受,与手写的按同一套标准验收,不必特别声
 
 ## CI / 发布
 
-- `.github/workflows/ci.yml`:每次 push/PR 跑单元测试(node 20)
+- `.github/workflows/ci.yml`:每次 push/PR 在 Ubuntu 与 Windows 上跑单元测试(Node 20 与 22,共四条)
 - `.github/workflows/release.yml`:打 `v*` tag 触发 npm 发布 8 包(按依赖顺序,`dsh-cc-loader` 最先、`dsh-cc-ecosystem` 最后;需仓库 Secret `NPM_TOKEN`,granular token 需覆盖全部 8 个包 + 2FA bypass)
 - 本地预检:`npm test` + `npm run check` + 需要的 `npm pack --dry-run`
 
