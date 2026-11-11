@@ -16,13 +16,17 @@ import assert from 'node:assert/strict'
 
 const DEFAULT_JSDOM_PATH = process.env.JSDOM_PATH ?? 'jsdom'
 
+/** The last import failure, surfaced in the assertion message when nothing resolves. */
+let jsdomLoadError = null
+
 /** Resolve jsdom from the environment, this package, or the workspace root. */
 async function loadJsdom() {
   const candidates = [DEFAULT_JSDOM_PATH, 'jsdom']
   for (const candidate of candidates) {
     try {
       return await import(candidate)
-    } catch {
+    } catch (error) {
+      jsdomLoadError = error
       /* try the next candidate */
     }
   }
@@ -32,8 +36,13 @@ async function loadJsdom() {
 const jsdomModule = await loadJsdom()
 
 if (jsdomModule === null) {
+  const detail = jsdomLoadError
+    ? ` (the last import attempt failed with: ${jsdomLoadError.message ?? jsdomLoadError})`
+    : ''
   test('client panel DOM suite', () => {
-    assert.fail('jsdom is not resolvable — run `npm install` in packages/cc-mcp (or set JSDOM_PATH)')
+    assert.fail(
+      `jsdom is not resolvable${detail} — run \`npm install\` in packages/cc-mcp (or set JSDOM_PATH)`,
+    )
   })
 } else {
   await runSuite(jsdomModule)
