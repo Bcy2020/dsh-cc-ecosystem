@@ -322,11 +322,12 @@ test('batch-A wiring: PreCompact/PostCompact fire from the session event stream 
   }
 })
 
-test('batch-A: WIRED_EVENTS covers the 11 wired events', () => {
+test('batch-A: WIRED_EVENTS covers the 16 wired events', () => {
   assert.deepEqual(WIRED_EVENTS, [
     'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop',
     'SubagentStart', 'SubagentStop', 'PostToolUseFailure', 'SessionEnd',
-    'PreCompact', 'PostCompact',
+    'PreCompact', 'PostCompact', 'PermissionRequest', 'PermissionDenied',
+    'CwdChanged', 'StopFailure', 'InstructionsLoaded',
   ])
 })
 
@@ -341,12 +342,16 @@ test('demo hooks.json: 19 hooks across 11 events — all five handler types pars
   const raw = JSON.parse(readFileSync(demoFile, 'utf8'))
   const { config, skipped } = parseHooksConfig(raw)
 
-  // 12 events carry hooks (the 11 wired plus Notification, whose http hook is
-  // parsed-but-inert — Notification has no DSH extension point); every wired
-  // event is present.
+  // 12 events carry hooks: the 11 events wired when the demo was written, plus
+  // Notification, whose http hook is parsed-but-inert (no DSH extension point).
   const events = Object.keys(config)
   assert.equal(events.length, 12)
-  for (const ev of WIRED_EVENTS) assert.ok(events.includes(ev), `wired event ${ev} configured in demo`)
+  const DEMO_WIRED = [
+    'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop',
+    'SubagentStart', 'SubagentStop', 'PostToolUseFailure', 'SessionEnd',
+    'PreCompact', 'PostCompact',
+  ]
+  for (const ev of DEMO_WIRED) assert.ok(events.includes(ev), `wired event ${ev} configured in demo`)
 
   // 19 entries = 14 command + http (PreToolUse, Notification) + mcp_tool
   // (PostToolUse) + prompt (UserPromptSubmit) + agent (Stop).

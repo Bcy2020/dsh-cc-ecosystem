@@ -18,7 +18,7 @@ process-level, read once at load; its own source carries the
 |---|---|
 | 包名 | `dsh-cc-hooks` |
 | 依赖 | `@deepseek-ai/dsh-hook-protocol`(官方共享协议层,peer)、`dsh-cc-loader`(file: 共享解析层) |
-| 事件 | 11/31:官方 7 映射集 + 批次 A 扩展 —— SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / PostToolUseFailure / Stop / SubagentStart / SubagentStop / SessionEnd / PreCompact / PostCompact |
+| 事件 | 16/31:官方 7 映射集 + 批次 A 扩展 + W1 直映射 —— SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / PostToolUseFailure / Stop / SubagentStart / SubagentStop / SessionEnd / PreCompact / PostCompact / PermissionRequest / PermissionDenied / CwdChanged / StopFailure / InstructionsLoaded |
 | 动作类型 | 全部 5 类执行:`command` / `http` / `mcp_tool` / `prompt` / `agent`(批次 B);事件×类型落在官方支持矩阵之外 → 解析即跳过 + 警告,能力缺失(tools/llm 服务、subagent 工具、模型路由)→ 警告 + 非阻断,永不崩溃 |
 | 宿主 DSH | 0.1.0-rc.x(协议 peer 钉 `0.1.0-rc.6`,npm 无 rc.5 发布) |
 
