@@ -3,15 +3,21 @@
 // detail view with its tool list, the Disable/Enable toggle, Escape/backdrop
 // closing, and the auto-dismissing self-check toast.
 //
-// jsdom is NOT a dependency of this package, so the suite SKIPS unless it can
-// be resolved — point JSDOM_PATH at a jsdom install (or `npm i -D jsdom`) to
-// run it. Everything else about the browser half is asserted by the transport
-// test in client-bundle.test.mjs and by the host-side integration suite.
+// jsdom is a devDependency of this package, so `npm install` (and the CI
+// install step) always has it. A missing jsdom FAILS the suite instead of
+// skipping it: a skipped file is green, which is how the two stale assertions
+// below went unnoticed for a whole discovery rewrite. JSDOM_PATH still wins
+// when it points at another install. Everything else about the browser half is
+// asserted by the transport test in client-bundle.test.mjs and by the host-side
+// integration suite.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 const DEFAULT_JSDOM_PATH = process.env.JSDOM_PATH ?? 'jsdom'
+
+/** The last import failure, surfaced in the assertion message when nothing resolves. */
+let jsdomLoadError = null
 
 /** Resolve jsdom from the environment, this package, or the workspace root. */
 async function loadJsdom() {
@@ -19,7 +25,8 @@ async function loadJsdom() {
   for (const candidate of candidates) {
     try {
       return await import(candidate)
-    } catch {
+    } catch (error) {
+      jsdomLoadError = error
       /* try the next candidate */
     }
   }
@@ -29,7 +36,14 @@ async function loadJsdom() {
 const jsdomModule = await loadJsdom()
 
 if (jsdomModule === null) {
-  test('client panel DOM suite', { skip: 'jsdom not resolvable — set JSDOM_PATH to run it' }, () => {})
+  const detail = jsdomLoadError
+    ? ` (the last import attempt failed with: ${jsdomLoadError.message ?? jsdomLoadError})`
+    : ''
+  test('client panel DOM suite', () => {
+    assert.fail(
+      `jsdom is not resolvable${detail} — run \`npm install\` in packages/cc-mcp (or set JSDOM_PATH)`,
+    )
+  })
 } else {
   await runSuite(jsdomModule)
 }
@@ -225,7 +239,7 @@ async function runSuite({ JSDOM }) {
       assert.ok(app.q('.ccmcp-overlay'), 'panel opened')
       assert.ok(app.q('.ccmcp-panel'), 'panel card mounted')
       assert.match(app.q('.ccmcp-title').textContent, /MCP servers/)
-      assert.equal(app.q('.ccmcp-subtitle').textContent, 'C:/p', 'subtitle shows the project root')
+      assert.equal(app.q('.ccmcp-subtitle').textContent, 'project 2', 'subtitle counts the servers per scope')
 
       const rows = app.qa('[data-role="row"]')
       assert.deepEqual(rows.map((row) => row.getAttribute('data-key')), ['project:echo', 'project:broken'])
@@ -264,7 +278,7 @@ async function runSuite({ JSDOM }) {
       await app.tick()
 
       assert.equal(app.q('[data-role="statusline"]').textContent, 'Connected · 1 tools')
-      assert.match(app.q('.ccmcp-source').textContent, /Configured in C:\/p\/\.mcp\.json/)
+      assert.equal(app.q('.ccmcp-source').textContent, 'Project scope · C:/p/.mcp.json')
       assert.match(app.q('.ccmcp-tools-head').textContent, /Tools \(1\)/)
       assert.equal(app.qa('.ccmcp-tool-name').map((node) => node.textContent)[0], 'mcp__echo__echo')
       assert.match(app.q('.ccmcp-tool-desc').textContent, /Echo the given text back/)
