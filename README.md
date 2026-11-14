@@ -79,7 +79,7 @@ dsh plugin --profile <name> add dsh-cc-ecosystem@0.6.1
 | `0.1.5-rc.2` 或 `0.2.0-rc.2` | **`v0.6.0`（当前）** —— 一条版本线同时兼容两代 |
 | `0.1.0-rc.7` ~ `0.1.1-rc.2` | `v0.1.x`（已停止维护） |
 
-- **Hooks 事件未全覆盖**：Claude Code 的 31 个事件中，11 个有对应扩展点会真正触发；其余会被解析但不运行。
+- **Hooks 事件未全覆盖**：Claude Code 的 31 个事件中，16 个有对应扩展点会真正触发；其余会被解析但不运行。
 - **子代理的部分字段不生效**：`isolation: worktree` 的子代理不会出现在目录里；`hooks`、`mcpServers`、`permissionMode` 会被忽略并给出提示。
 - **LSP 桥接（mcpls）尚未实现**。
 - **Bash 与 PowerShell 是独立工具**：`Bash(rm -rf *)` 不覆盖 PowerShell，两者规则各自生效。

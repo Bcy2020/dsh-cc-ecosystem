@@ -19,9 +19,10 @@
 // and a missing runtime capability (no tools/llm service, no subagent tool,
 // no model route) degrades to a warning + neutral outcome, never a crash.
 //
-// 11/31 events run (7 bridge-wired + PostToolUseFailure, SessionEnd,
-// PreCompact, PostCompact); the other 20 have no DSH extension point yet, so
-// their hooks sit parsed-but-inert.
+// 16/31 events run (7 bridge-wired + PostToolUseFailure, SessionEnd,
+// PreCompact, PostCompact + the W1 direct mappings PermissionRequest,
+// PermissionDenied, CwdChanged, StopFailure, InstructionsLoaded); the other 15
+// have no DSH extension point yet, so their hooks sit parsed-but-inert.
 
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
@@ -182,6 +183,20 @@ export function apply(ctx, config = {}) {
   const subagentChildren = new Map()
   ctx.effect(() => () => { cache.clear(); return detached.drain() }, 'cc-hooks: drain detached hook runs')
 
+  // Session → agent fallback for log-only points (StopFailure,
+  // PermissionDenied) that receive a Session rather than an Agent. The live
+  // registry is consulted first; this map covers the window before/after a
+  // registered agent is reachable.
+  const knownAgents = new Map()
+  // callIds of tool calls a PermissionRequest hook denied. The approval audit
+  // pair that follows must not also fire PermissionDenied for them.
+  const selfDeniedCalls = new Set()
+  function agentFor(session) {
+    const id = session?.header?.id
+    if (id === undefined) return undefined
+    return ctx.get('agents')?.get(id) ?? knownAgents.get(id)
+  }
+
   /**
    * Run every command hook configured for `point` whose matcher selects
    * `matchQuery`, with the per-event `payload` on stdin, and fold the results.
@@ -257,7 +272,10 @@ export function apply(ctx, config = {}) {
         }
       }
     }
-    return mergeHookOutputs(outputs)
+    // `outputs` keeps each hook's decoded result so a point whose CC encoding
+    // the shared protocol does not decode (PermissionRequest's `decision`
+    // object, PermissionDenied's `retry`) can read the raw stdout itself.
+    return { ...mergeHookOutputs(outputs), outputs }
   }
 
   /**
@@ -390,6 +408,8 @@ export function apply(ctx, config = {}) {
     // threw here and took the whole handler — and therefore every SessionStart
     // hook — down with it. `runPoint` and `base` are already total; this line
     // was the one that ran first.
+    const sessionId = agent?.session?.header?.id
+    if (sessionId !== undefined) knownAgents.set(sessionId, agent)
     const cwd = agent?.session?.header?.cwd
     if (cwd !== undefined) {
       void configFor(cwd).catch((error) => ctx.logger.warn(`cc-hooks: preload failed for ${cwd}: ${String(error)}`))
@@ -483,7 +503,11 @@ export function apply(ctx, config = {}) {
   // use the live child's workspace and the generic agent-type matcher subject.
   ctx.on('subagent/start', (info) => {
     const child = ctx.get('agents')?.get(info.id)
-    if (child !== undefined) subagentChildren.set(info.runId, child)
+    if (child !== undefined) {
+      subagentChildren.set(info.runId, child)
+      const sessionId = child.session?.header?.id
+      if (sessionId !== undefined) knownAgents.set(sessionId, child)
+    }
     detached.track(runPoint('SubagentStart', SUBAGENT_TYPE, subagentPayload(ctx, 'SubagentStart', info, child), { ...(child ? { agent: child } : {}), signal: detached.signal })
       .then((merged) => {
         const context = contextFrom(merged)
@@ -505,20 +529,127 @@ export function apply(ctx, config = {}) {
   ctx.on('agent/disposed', ({ agent }) => {
     // The session may already be detached by the time an agent is disposed;
     // read it the same total way as everywhere else.
+    const sessionId = agent?.session?.header?.id
+    if (sessionId !== undefined) knownAgents.delete(sessionId)
     if (agent?.session?.header?.origin === 'subagent') return
     detached.track(runPoint('SessionEnd', 'other', sessionEndPayload(ctx, agent), { agent, signal: detached.signal }))
   })
 
-  // --- PreCompact / PostCompact → session compaction event stream. The
-  // matcher subject is what triggered compaction (manual | auto): a manual
-  // /compact carries a sourceCommandId, automatic pressure does not. These
-  // are observe-only points: compaction is already durable by the time the
-  // event fires, so a blocking PreCompact decision cannot be honored. ---
+  // --- PermissionRequest → approval/request waterfall. A hook verdict claims
+  // the request; with no verdict the chain delegates so the normal answerers
+  // still see it. ApprovalRequest carries no `tool_input`, so the payload
+  // recovers it from the matching `tool/call` in the session log. A hook deny
+  // is recorded so its approval/decided does not also fire PermissionDenied
+  // (CC fires that for denials the hook did not make). Prepended because the
+  // desktop's remote bridge registers a terminal root answerer: once the user
+  // answers its prompt the chain never reaches later listeners, so a hook
+  // registered after it would never run.
+  ctx.on('approval/request', async (req, next) => {
+    if (typeof req?.toolName !== 'string') return next()
+    const agent = req.agent
+    const session = agent?.session
+    const merged = await runPoint('PermissionRequest', req.toolName, permissionRequestPayload(ctx, agent, req), {
+      ...(session !== undefined ? { session } : {}),
+      signal: req.signal,
+      altMatchQuery: ccBucket(req.toolName) ?? undefined,
+    })
+    const verdict = permissionRequestVerdict(merged)
+    if (verdict === 'deny') {
+      if (req.callId !== undefined) selfDeniedCalls.add(req.callId)
+      return 'rejected'
+    }
+    if (verdict === 'allow') return 'allowed-once'
+    return next()
+  }, { prepend: true })
+
+  // --- One listener owns every point that reads the durable log: compaction
+  // boundaries (PreCompact/PostCompact), working-directory changes
+  // (CwdChanged), failed turn ends (StopFailure), instruction-file loads
+  // (InstructionsLoaded), and the approval audit pair behind PermissionDenied.
+  // Sharing one listener lets the points share per-session bookkeeping.
+  //
+  // PreCompact/PostCompact matcher subject is what triggered compaction
+  // (manual | auto): a manual /compact carries a sourceCommandId, automatic
+  // pressure does not. They are observe-only — compaction is already durable by
+  // the time the event fires, so a blocking PreCompact decision cannot be
+  // honored. ---
+  const lastCwdBySession = new WeakMap()
+  const pendingAsksBySession = new WeakMap()
+
   ctx.on('session/event', (session, event) => {
-    if (event.type !== 'compaction/start' && event.type !== 'compaction/end') return
-    const point = event.type === 'compaction/start' ? 'PreCompact' : 'PostCompact'
-    const trigger = event.data.sourceCommandId !== undefined ? 'manual' : 'auto'
-    detached.track(runPoint(point, trigger, compactPayload(ctx, event, session, trigger), { session, signal: detached.signal }))
+    if (session === undefined || event?.type === undefined) return
+    switch (event.type) {
+      case 'compaction/start':
+      case 'compaction/end': {
+        const point = event.type === 'compaction/start' ? 'PreCompact' : 'PostCompact'
+        const trigger = event.data.sourceCommandId !== undefined ? 'manual' : 'auto'
+        detached.track(runPoint(point, trigger, compactPayload(ctx, event, session, trigger), { session, signal: detached.signal }))
+        return
+      }
+      case 'working-directory/change': {
+        // DSH records only the new directory; old_cwd is this plugin's cache,
+        // seeded from the session header, so the first change has both.
+        const next = event.data.cwd
+        if (typeof next !== 'string' || next === '') return
+        const previous = lastCwdBySession.get(session) ?? session.header?.cwd
+        lastCwdBySession.set(session, next)
+        if (previous === next) return
+        detached.track(runPoint('CwdChanged', '', cwdChangedPayload(ctx, session, previous, next), { session, signal: detached.signal }))
+        return
+      }
+      case 'turn/end': {
+        const reason = event.data.reason
+        if (reason?.kind !== 'error') return
+        const agent = agentFor(session)
+        const error = ccErrorFromFailure(reason.error)
+        detached.track(runPoint('StopFailure', error, stopFailurePayload(ctx, agent, session, reason.error), { session, signal: detached.signal }))
+        return
+      }
+      case 'user/message': {
+        const source = event.data.source
+        if (source?.kind !== 'agent-instructions' || !Array.isArray(source.changes)) return
+        const loadReason = source.baseline === true ? 'session_start' : 'nested_traversal'
+        for (const change of source.changes) {
+          if (change?.action === 'remove' || typeof change.path !== 'string') continue
+          detached.track(runPoint('InstructionsLoaded', loadReason, instructionsLoadedPayload(ctx, session, change, loadReason), { session, signal: detached.signal }))
+        }
+        return
+      }
+      case 'approval/asked': {
+        let asks = pendingAsksBySession.get(session)
+        if (asks === undefined) {
+          asks = new Map()
+          pendingAsksBySession.set(session, asks)
+        }
+        asks.set(event.data.id, { toolName: event.data.toolName, callId: event.data.callId, reason: event.data.reason })
+        return
+      }
+      case 'approval/decided': {
+        const asks = pendingAsksBySession.get(session)
+        const ask = asks?.get(event.data.id)
+        asks?.delete(event.data.id)
+        if (ask === undefined) return
+        // Always retire the marker, whatever the outcome, so a cancelled ask
+        // cannot leave one behind.
+        const selfDenied = ask.callId !== undefined && selfDeniedCalls.delete(ask.callId)
+        if (selfDenied || event.data.outcome !== 'rejected') return
+        const agent = agentFor(session)
+        detached.track(runPoint('PermissionDenied', ask.toolName, permissionDeniedPayload(ctx, agent, session, ask), {
+          session, signal: detached.signal,
+          altMatchQuery: ccBucket(ask.toolName) ?? undefined,
+        }).then((merged) => {
+          // `retry: true` is a hint to the model that it may ask again; without
+          // a reachable agent the hint is dropped rather than faked.
+          if (!permissionDeniedRetry(merged) || agent === undefined) return
+          agent.inject(createUserMessage({
+            content: [{ type: 'text', text: 'The previous tool call was denied. You may retry it if you believe it should be allowed.' }],
+            source: PLUGIN_SOURCE,
+          }))
+        }).catch((error) => ctx.logger.warn(`cc-hooks: PermissionDenied hook failed: ${String(error)}`)))
+        return
+      }
+      default:
+    }
   })
 }
 
@@ -665,4 +796,172 @@ function subagentPayload(ctx, event, info, child) {
     agent_type: SUBAGENT_TYPE,
     ...(event === 'SubagentStop' ? { stop_hook_active: false, last_assistant_message: lastAssistantMessage(child) } : {}),
   }
+}
+
+/**
+ * The tool input recorded for `callId`, or `{}`.
+ *
+ * `ApprovalRequest` carries only the tool NAME (a UI already streamed the call),
+ * so the PermissionRequest/PermissionDenied payloads recover the CC
+ * `tool_input` from the matching `tool/call` in the session log. An absent or
+ * unparseable entry degrades to `{}` — the payload must never throw.
+ */
+function toolInputByCallId(session, callId) {
+  if (session === undefined || callId === undefined) return {}
+  const event = sessionLastEvent(session, (e) => e.type === 'tool/call' && e.data?.callId === callId)
+  if (event?.type !== 'tool/call') return {}
+  try {
+    const parsed = JSON.parse(event.data.arguments)
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function permissionRequestPayload(ctx, agent, req) {
+  return {
+    ...base(ctx, agent, 'PermissionRequest'),
+    tool_name: req.toolName,
+    tool_input: toolInputByCallId(agent?.session, req.callId),
+    permission_suggestions: [],
+  }
+}
+
+function permissionDeniedPayload(ctx, agent, session, ask) {
+  return {
+    ...base(ctx, agent ?? { session }, 'PermissionDenied'),
+    tool_name: ask.toolName,
+    tool_input: toolInputByCallId(session, ask.callId),
+    tool_use_id: ask.callId ?? '',
+    ...(ask.reason !== undefined ? { reason: ask.reason } : {}),
+  }
+}
+
+function cwdChangedPayload(ctx, session, previous, next) {
+  return {
+    ...base(ctx, { session }, 'CwdChanged'),
+    // DSH never reports the previous directory; a session whose header carries
+    // none yields the event without old_cwd rather than not at all.
+    ...(previous !== undefined ? { old_cwd: previous } : {}),
+    new_cwd: next,
+  }
+}
+
+function stopFailurePayload(ctx, agent, session, failure) {
+  return {
+    ...base(ctx, agent ?? { session }, 'StopFailure'),
+    error: ccErrorFromFailure(failure),
+    ...(failure !== undefined && failure !== null
+      ? {
+          error_details: {
+            code: failure.code,
+            ...(failure.status !== undefined ? { status: failure.status } : {}),
+            message: failure.message,
+          },
+        }
+      : {}),
+    last_assistant_message: agent !== undefined ? lastAssistantMessage(agent) : '',
+  }
+}
+
+function instructionsLoadedPayload(ctx, session, change, loadReason) {
+  return {
+    ...base(ctx, { session }, 'InstructionsLoaded'),
+    file_path: change.path,
+    // DSH instruction scopes are `user-global` or a project directory key;
+    // CC's Local/Managed tiers have no DSH counterpart.
+    memory_type: change.scope === 'user-global' ? 'User' : 'Project',
+    load_reason: loadReason,
+  }
+}
+
+/**
+ * DSH `LlmFailure.code` → CC `StopFailure.error` value. Codes CC has no
+ * counterpart for (CONTEXT_WINDOW_EXCEEDED, EMPTY_RESPONSE, …) land on the
+ * nearest CC class; anything unrecognized is `unknown`, exactly as CC reports
+ * a failure it cannot classify.
+ */
+const CC_ERROR_BY_CODE = new Map([
+  ['RATE_LIMIT', 'rate_limit'],
+  ['SERVER', 'server_error'],
+  ['TIMEOUT', 'server_error'],
+  ['TRANSPORT', 'server_error'],
+  ['QUOTA', 'billing_error'],
+  ['CONTEXT_WINDOW_EXCEEDED', 'invalid_request'],
+  ['INVALID_CREDENTIAL', 'authentication_failed'],
+  ['MISSING_CREDENTIAL', 'authentication_failed'],
+  ['AUTH', 'authentication_failed'],
+  ['INVALID_ARGS', 'invalid_request'],
+  ['NO_ADAPTER', 'unknown'],
+  ['EMPTY_RESPONSE', 'unknown'],
+  ['MAX_TOKENS', 'max_output_tokens'],
+  ['OUTPUT_TOKEN_LIMIT', 'max_output_tokens'],
+])
+
+function ccErrorFromFailure(failure) {
+  if (failure === undefined || failure === null) return 'unknown'
+  const mapped = CC_ERROR_BY_CODE.get(failure.code)
+  if (mapped !== undefined) return mapped
+  const status = failure.status
+  if (typeof status === 'number') {
+    if (status === 429) return 'rate_limit'
+    if (status === 529) return 'overloaded'
+    if (status === 401 || status === 403) return 'authentication_failed'
+    if (status === 404) return 'model_not_found'
+    if (status === 400 || status === 413 || status === 422) return 'invalid_request'
+    if (status >= 500) return 'server_error'
+  }
+  return 'unknown'
+}
+
+/**
+ * The raw structured objects a point's hooks printed on stdout (exit 0).
+ *
+ * The shared protocol decoder only understands the fields common to every
+ * event; the CC shapes for PermissionRequest (`decision.behavior`) and
+ * PermissionDenied (`retry`) live outside it, so those points read the same
+ * stdout themselves. Malformed JSON is ignored, as in the protocol decoder.
+ */
+function rawHookObjects(merged) {
+  const parsed = []
+  for (const output of merged.outputs ?? []) {
+    const text = typeof output?.stdout === 'string' ? output.stdout.trim() : ''
+    if (!text.startsWith('{')) continue
+    try {
+      const value = JSON.parse(text)
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) parsed.push(value)
+    } catch {
+      // Malformed JSON stays plain stdout and carries no decision.
+    }
+  }
+  return parsed
+}
+
+/** A PermissionRequest hook verdict: 'deny' | 'allow' | undefined. */
+function permissionRequestVerdict(merged) {
+  // Exit 2 becomes a top-level 'block'; a legacy top-level decision:'block'
+  // does too. Both deny the request, as in CC.
+  if (merged.decision === 'deny' || merged.decision === 'block') return 'deny'
+  let allow = false
+  for (const parsed of rawHookObjects(merged)) {
+    const specific = parsed.hookSpecificOutput
+    if (specific === null || typeof specific !== 'object' || specific.hookEventName !== 'PermissionRequest') continue
+    const decision = specific.decision
+    if (decision === null || typeof decision !== 'object') continue
+    if (decision.behavior === 'deny') return 'deny'
+    if (decision.behavior === 'allow') allow = true
+  }
+  if (allow) return 'allow'
+  if (merged.decision === 'allow' || merged.decision === 'approve') return 'allow'
+  return undefined
+}
+
+/** Whether a PermissionDenied hook asked the model to retry the denied call. */
+function permissionDeniedRetry(merged) {
+  return rawHookObjects(merged).some((parsed) => {
+    const specific = parsed.hookSpecificOutput
+    return specific !== null && typeof specific === 'object'
+      && specific.hookEventName === 'PermissionDenied'
+      && specific.retry === true
+  })
 }
