@@ -9,6 +9,22 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.7.0 — 再接线 5 个 Claude Code 事件(16/31)
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.7.0**,
+`cc-permissions` **0.8.0**,`dsh-cc-memory` **0.3.0**。
+
+`cc-hooks` 的事件覆盖从 11/31 提升到 16/31,按 CC 的事件语义直接映射到宿主已有的扩展点。
+
+- **`CwdChanged`** ← `working-directory/change`;只在目录真的变化时触发,旧目录未知时省略 `old_cwd`。
+- **`StopFailure`** ← `turn/end` 且 `reason.kind === 'error'`;按 `LlmFailure.code` 映射 CC 的 error 类别,没有 code 时回退到 HTTP 状态。
+- **`InstructionsLoaded`** ← `agent-instructions` 来源的用户消息;`baseline` → `session_start`,增量 → `nested_traversal`;`user-global` 作用域 → `User`,其余 → `Project`。
+- **`PermissionRequest`** ← `approval/request` waterfall;`allow` → `allowed-once`,`deny` → `rejected`;`tool_input` 按 `callId` 从 `tool/call` 反查补全。
+  **监听器以 `prepend` 注册**:桌面端审批桥接在用户作答后直接返回、不再调用 `next()`,排在它后面的监听器永远不会执行。
+- **`PermissionDenied`** ← `approval/asked` + `approval/decided`;hook 自己做出的拒绝按 `callId` 去重,不再重复触发;`retry: true` 会注入一条重试提示。
+
+**验证**:新增 W1 单测与 remaining-20 夹具;在 DSH `0.2.2-rc.1` 真机上验证了 `InstructionsLoaded`、`PermissionRequest`(审批弹窗出现前触发)、`PermissionDenied`(拒绝后触发)。`CwdChanged` 与 `StopFailure` 目前没有可用的宿主入口,仅有单测覆盖。
+
 ## v0.6.1 — 更新提示改为每日自检
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.6.1**,

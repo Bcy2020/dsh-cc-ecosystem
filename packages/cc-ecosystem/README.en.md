@@ -8,7 +8,7 @@ Version numbers are **pinned on purpose**: pnpm 11 refuses versions published le
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem@0.6.1
+dsh plugin --profile <name> add dsh-cc-ecosystem@0.7.0
 ```
 <!-- versions:end -->
 

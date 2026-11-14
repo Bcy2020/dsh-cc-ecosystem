@@ -61,7 +61,7 @@ The version is pinned deliberately: pnpm 11 withholds releases younger than 24 h
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-permissions@0.7.1
+dsh plugin --profile <name> add dsh-cc-permissions@0.8.0
 ```
 <!-- versions:end -->
 
