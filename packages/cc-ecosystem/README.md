@@ -1,10 +1,12 @@
 # dsh-cc-ecosystem
 
+[English](README.en.md) · 中文
+
 One install brings the whole [dsh-cc](https://github.com/Bcy2020/dsh-cc-ecosystem) ecosystem into a DSH profile: the shared parse layer plus all six Claude Code adapters, mounted in a single profile layer.
 
 把整个 dsh-cc 生态装进一个 DSH profile:共享解析层 + 六个 Claude Code 适配器,由**一个 profile 层**全部挂载。
 
-版本号是**故意钉死**的:pnpm 11 会拦下发布不满 24 小时的版本,只写包名会静默装到旧版并报成功 —— 见[为什么要带版本号](../../README.md#为什么要带版本号)。Web GUI 里把下面这行 `包名@版本号` 原样填进输入框即可。
+版本号是**故意钉死**的:pnpm 11 会拦下发布不满 24 小时的版本,只写包名会静默装到旧版并报成功 —— 见[为什么要带版本号](../../README.md#30-秒上手)。Web GUI 里把下面这行 `包名@版本号` 原样填进输入框即可。
 
 <!-- versions:begin -->
 ```sh
@@ -31,7 +33,7 @@ DSH 的 `dsh plugin` 把 `dsh.profile.bundles` 与 **profile 自己的直接依�
 `dsh-cc-ecosystem` 时,六个适配器都是它的传递依赖,所以**只有这个包自己的 patch 能挂载它们**。
 
 因此本包的 `cordis.patch.yml` 里那六行是各适配器自身 patch 的**副本**。两份配置会各自演化,
-所以 [test/umbrella.test.mjs](../test/umbrella.test.mjs) 逐行比对二者,任何一处 config 漂移
+所以 [test/umbrella.test.mjs](../../test/umbrella.test.mjs) 逐行比对二者,任何一处 config 漂移
 都会让测试失败(已做变异验证:改动一个值即可让该断言失败)。
 
 想只装其中几个,仍然直接装对应的包 —— 每个适配器自己也是合法的 bundle。

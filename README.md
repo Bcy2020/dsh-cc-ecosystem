@@ -1,5 +1,7 @@
 # dsh-cc-ecosystem
 
+[English](README.en.md) · 中文
+
 <p align="center">
   <img src="./assets/readme/hero.png" width="100%" alt="dsh-cc-ecosystem：一个 .claude 文件夹用箭头连到八个 DSH 入口——技能、命令、规则、权限、子代理、hooks、MCP、记忆">
 </p>

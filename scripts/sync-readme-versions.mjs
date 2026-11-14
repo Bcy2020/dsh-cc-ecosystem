@@ -27,7 +27,9 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 /** README → the packages its install snippet installs, in order. */
 const BLOCKS = new Map([
   ['README.md', ['dsh-cc-ecosystem']],
+  ['README.en.md', ['dsh-cc-ecosystem']],
   ['packages/cc-ecosystem/README.md', ['dsh-cc-ecosystem']],
+  ['packages/cc-ecosystem/README.en.md', ['dsh-cc-ecosystem']],
   ['packages/cc-skills/README.md', ['dsh-cc-skills']],
   ['packages/cc-permissions/README.md', ['dsh-cc-permissions']],
   ['packages/cc-agents/README.md', ['dsh-cc-agents']],
