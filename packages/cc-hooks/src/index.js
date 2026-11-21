@@ -19,10 +19,12 @@
 // and a missing runtime capability (no tools/llm service, no subagent tool,
 // no model route) degrades to a warning + neutral outcome, never a crash.
 //
-// 16/31 events run (7 bridge-wired + PostToolUseFailure, SessionEnd,
+// 21/31 events run (7 bridge-wired + PostToolUseFailure, SessionEnd,
 // PreCompact, PostCompact + the W1 direct mappings PermissionRequest,
-// PermissionDenied, CwdChanged, StopFailure, InstructionsLoaded); the other 15
-// have no DSH extension point yet, so their hooks sit parsed-but-inert.
+// PermissionDenied, CwdChanged, StopFailure, InstructionsLoaded + the W2
+// compositions PostToolBatch, TaskCreated, TaskCompleted, UserPromptExpansion,
+// Notification); the other 10 have no DSH extension point yet, so their hooks
+// sit parsed-but-inert.
 
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
@@ -48,7 +50,7 @@ import {
   runMcpToolHook,
   runPromptHook,
 } from './executors.js'
-import { ccBucket, injectedSource, onSessionStart, sessionLastEvent } from 'dsh-cc-loader'
+import { ccBucket, injectedSource, onSessionStart, sessionEvents, sessionLastEvent } from 'dsh-cc-loader'
 import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 
 export const name = 'cc-hooks'
@@ -338,11 +340,18 @@ export function apply(ctx, config = {}) {
       hook.command,
       opts.projectDir !== undefined ? { projectDir: opts.projectDir } : {},
     )
-    // Only a command whose first token is quoted is read differently by the two
-    // dialects, and resolving the dialect can cost a probe — so ask only when
-    // the answer would actually change the command.
-    const dialect = needsCallOperator(substituted) ? await shellDialect() : undefined
-    const command = applyCallOperator(substituted, dialect)
+    // An explicit dialect is always honored; on Windows the answer is needed for
+    // the exit-code wrapper below; elsewhere only a quoted first token makes it
+    // matter. Resolving can cost a probe, so ask only when it changes the result.
+    const configured = config.shellDialect !== undefined && config.shellDialect !== 'auto'
+    const dialect = configured || process.platform === 'win32' || needsCallOperator(substituted)
+      ? await shellDialect()
+      : undefined
+    const base = applyCallOperator(substituted, dialect)
+    // PowerShell maps a native command's non-zero exit to its own exit code 1,
+    // so a CC hook's exit 2 would never reach the protocol as a block. Reset and
+    // re-export the native code so exit 2 keeps its blocking meaning on pwsh.
+    const command = dialect === 'pwsh' ? `$global:LASTEXITCODE = 0; ${base}; exit $LASTEXITCODE` : base
     const sandboxPolicy = sandboxPolicyFor(opts.session)
     // Claude Code exports CLAUDE_PLUGIN_ROOT to a plugin hook's environment;
     // some plugins pick their output shape from it rather than from the
@@ -395,6 +404,77 @@ export function apply(ctx, config = {}) {
     return [ours, ...(theirs ?? [])]
   }
 
+  /**
+   * Synthesize one CC `Notification`. DSH has no notification service, so this
+   * plugin maps its own observation points onto CC's notification types; a
+   * keyed 1s window keeps one logical notification from firing twice.
+   */
+  const recentNotifications = new Map()
+  // Human-facing agent-stop notices, served to this plugin's browser half.
+  // Chat renders them itself (small, muted): the host exposes no plugin-only
+  // notice channel, and inventing a model turn just to say "stopped" would put
+  // words in the assistant's mouth.
+  const noticesBySession = new Map()
+  let noticeCounter = 0
+  function recordNotice(session, text, key) {
+    const sessionId = session?.header?.id
+    if (typeof sessionId !== 'string' || sessionId === '') return false
+    const list = noticesBySession.get(sessionId) ?? []
+    // pre-step can be re-entered for the same step; one block is one notice.
+    if (key !== undefined && list.some((notice) => notice.key === key)) return false
+    list.push({ id: `${Date.now()}-${++noticeCounter}`, at: Date.now(), text, key })
+    if (list.length > 20) list.splice(0, list.length - 20)
+    noticesBySession.set(sessionId, list)
+    return true
+  }
+  function fireNotification(session, agent, type, message, key) {    const now = Date.now()
+    const last = recentNotifications.get(key)
+    if (last !== undefined && now - last < 1000) return
+    recentNotifications.set(key, now)
+    if (recentNotifications.size > 100) {
+      for (const [k, at] of recentNotifications) {
+        if (now - at >= 1000) recentNotifications.delete(k)
+      }
+    }
+    detached.track(runPoint('Notification', type, notificationPayload(ctx, agent, session, type, message), { session, signal: detached.signal })
+      .catch((error) => ctx.logger.warn(`cc-hooks: Notification hook failed: ${String(error)}`)))
+  }
+
+  /**
+   * TaskCreated/TaskCompleted from one `todo_write` call.
+   *
+   * DSH's todo tool replaces the whole list and carries no ids, so each write is
+   * diffed against the previous `todo/write` snapshot: new content is a
+   * creation, a status move into `completed` is a completion. A blocking hook
+   * denies the ENTIRE write — the replacement is atomic, so legitimate changes
+   * in the same call are refused with it. The reason names the item that
+   * tripped the hook.
+   */
+  async function runTaskHooks(exec, turn) {
+    const agent = exec.agent
+    const session = agent?.session
+    if (session === undefined) return undefined
+    const requested = exec.arguments?.todos
+    if (!Array.isArray(requested)) return undefined
+    const previous = sessionLastEvent(session, (e) => e.type === 'todo/write')?.data?.todos
+    const { created, completed } = todoDiff(Array.isArray(previous) ? previous : [], requested)
+    const runs = [
+      ...created.map((entry) => ['TaskCreated', entry]),
+      ...completed.map((entry) => ['TaskCompleted', entry]),
+    ]
+    for (const [point, entry] of runs) {
+      const merged = await runPoint(point, '', taskPayload(ctx, agent, point, entry), {
+        ...(agent !== undefined ? { agent } : {}), turn, signal: exec.signal,
+      })
+      if (merged.decision === 'deny') {
+        return { kind: 'deny', reason: taskBlockReason(point, entry, merged.reason) }
+      }
+      // CC's `continue: false` stops the teammate; DSH has no equivalent here.
+      if (merged.stop) ctx.logger.warn(`cc-hooks: ${point} continue:false is not supported on DSH (ignored)`)
+    }
+    return undefined
+  }
+
   ctx.logger.info('cc-hooks: per-session hooks registered (project .claude/hooks + ~/.claude + plugin dirs)')
 
   // SessionStart preloads the session config and runs SessionStart hooks
@@ -422,23 +502,65 @@ export function apply(ctx, config = {}) {
       .catch((error) => ctx.logger.warn(`cc-hooks: SessionStart hook failed: ${String(error)}`)))
   })
 
-  // --- UserPromptSubmit → PreStepDecision. The prompt text is the payload; no
-  // matcher subject (CC ignores matchers for this event). ---
-  ctx.on('agent/pre-step', async ({ agent, messages, turn, signal }, next) => {
-    if (messages.length === 0) return next()
-    const content = messages.flatMap((message) => message.content)
-    const merged = await runPoint('UserPromptSubmit', '', promptPayload(ctx, agent, content), { agent, turn, signal })
-    if (merged.decision === 'deny') {
-      return { kind: 'reject' }
+  // Serves the human-facing stop notices to this plugin's browser half.
+  registerNoticeRoute(ctx, noticesBySession)
+
+  // --- UserPromptSubmit and PostToolBatch both live at agent/pre-step: DSH has
+  // no batch event, so the step boundary after a tool batch is the closest
+  // equivalent to CC's "after a full batch resolves, before the next model
+  // call". UserPromptSubmit fires only when the step carries claimed user
+  // messages; PostToolBatch only when the PREVIOUS step in this turn had tool
+  // calls. A blocking PostToolBatch rejects the step and leaves a notice in the
+  // conversation (CC's `hook_stopped_continuation` warning) so both the user and
+  // the model learn what stopped the turn. ---
+  ctx.on('agent/pre-step', async ({ agent, messages, turn, step, signal }, next) => {
+    let promptMerged
+    if (messages.length > 0) {
+      const content = messages.flatMap((message) => message.content)
+      promptMerged = await runPoint('UserPromptSubmit', '', promptPayload(ctx, agent, content), { agent, turn, signal })
+      if (promptMerged.decision === 'deny') return { kind: 'reject' }
     }
+
+    let batchMerged
+    const toolCalls = previousStepToolCalls(agent?.session, turn, step)
+    if (toolCalls.length > 0) {
+      batchMerged = await runPoint('PostToolBatch', '', postToolBatchPayload(ctx, agent, toolCalls), { agent, turn, signal })
+      if (batchMerged.decision === 'deny' || batchMerged.stop) {
+        // CC shows the hook's reason (or `stopReason`, or its fixed fallback) as
+        // a transcript warning that stays in the conversation. DSH's step reject
+        // carries no text channel, so the message takes two paths: the browser
+        // half renders the human-facing row, and `agent.inject` leaves the same
+        // explanation in the model's context for its next step.
+        const reason = batchMerged.reason ?? batchMerged.stopReason
+        const text = reason !== undefined && reason !== ''
+          ? `Execution stopped by PostToolBatch hook: ${reason}`
+          : 'Execution stopped by PostToolBatch hook'
+        if (recordNotice(agent.session, text, `PostToolBatch:${String(turn)}:${String(step)}`)) {
+          agent.inject(createUserMessage({
+            content: [{
+              type: 'text',
+              text: `${text}\nThe turn was stopped; do not resume the blocked work unless the user asks.`,
+            }],
+            source: { ...PLUGIN_SOURCE, form: 'notice', summary: text },
+          }))
+        }
+        return { kind: 'reject' }
+      }
+    }
+
     // Delegate so later listeners may still rewrite or reject, then append our
     // context only to a downstream enter decision.
     const downstream = await next()
-    const ours = contextFrom(merged)
-    if (!ours || downstream.kind !== 'enter') return downstream
+    const ours = []
+    for (const merged of [promptMerged, batchMerged]) {
+      if (merged === undefined) continue
+      const context = contextFrom(merged)
+      if (context !== undefined) ours.push(context)
+    }
+    if (ours.length === 0 || downstream.kind !== 'enter') return downstream
     return {
       kind: 'enter',
-      messages: [...downstream.messages, ours],
+      messages: [...downstream.messages, ...ours],
     }
   })
 
@@ -452,6 +574,14 @@ export function apply(ctx, config = {}) {
     })
     if (merged.decision === 'deny') return { kind: 'deny', reason: merged.reason ?? 'blocked by PreToolUse hook' }
     if (merged.decision === 'ask') return { kind: 'ask', ...(merged.reason !== undefined ? { reason: merged.reason } : {}) }
+
+    // TaskCreated/TaskCompleted are synthesized from the same interception: DSH
+    // has no per-task events, so the whole-list `todo_write` is diffed against
+    // the last snapshot. A hook block denies the entire replacement.
+    if (exec.name === 'todo_write') {
+      const blocked = await runTaskHooks(exec, turn)
+      if (blocked !== undefined) return blocked
+    }
     return next()
   })
 
@@ -519,6 +649,7 @@ export function apply(ctx, config = {}) {
     const child = subagentChildren.get(info.runId) ?? ctx.get('agents')?.get(info.id)
     subagentChildren.delete(info.runId)
     detached.track(runPoint('SubagentStop', SUBAGENT_TYPE, subagentPayload(ctx, 'SubagentStop', info, child), { ...(child ? { agent: child } : {}), signal: detached.signal }))
+    fireNotification(child?.session, child, 'agent_completed', 'Claude has finished the task.', `agent_completed:${info.runId}`)
   })
 
   // --- SessionEnd → agent/disposed. Fires when a session terminates; the
@@ -615,6 +746,26 @@ export function apply(ctx, config = {}) {
         }
         return
       }
+      case 'command/run': {
+        // UserPromptExpansion: `command/run` is written before the handler runs
+        // and is log-only, so the hook is observe-only. CC's `prompt` (the
+        // expanded command body) has no DSH representation; the raw name/args
+        // are reported instead. `additionalContext` is queued for the next step;
+        // a block decision cannot be honored and is reported as degradation.
+        const commandName = event.data.name
+        if (typeof commandName !== 'string' || commandName === '') return
+        const agent = agentFor(session)
+        detached.track(runPoint('UserPromptExpansion', commandName, userPromptExpansionPayload(ctx, agent, session, event), { session, signal: detached.signal })
+          .then((merged) => {
+            if (merged.decision === 'deny') {
+              ctx.logger.warn('cc-hooks: UserPromptExpansion cannot block on DSH; the hook decision was ignored')
+            }
+            const context = contextFrom(merged)
+            if (context !== undefined && agent !== undefined) agent.inject(context)
+          })
+          .catch((error) => ctx.logger.warn(`cc-hooks: UserPromptExpansion hook failed: ${String(error)}`)))
+        return
+      }
       case 'approval/asked': {
         let asks = pendingAsksBySession.get(session)
         if (asks === undefined) {
@@ -622,6 +773,9 @@ export function apply(ctx, config = {}) {
           pendingAsksBySession.set(session, asks)
         }
         asks.set(event.data.id, { toolName: event.data.toolName, callId: event.data.callId, reason: event.data.reason })
+        fireNotification(session, agentFor(session), 'permission_prompt',
+          `Claude needs your permission to use ${String(event.data.toolName)}`,
+          `permission_prompt:${String(event.data.id)}`)
         return
       }
       case 'approval/decided': {
@@ -798,6 +952,16 @@ function subagentPayload(ctx, event, info, child) {
   }
 }
 
+/** Parse a logged `tool/call.arguments` string into the object CC calls `tool_input`. */
+function parseArguments(raw) {
+  try {
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
 /**
  * The tool input recorded for `callId`, or `{}`.
  *
@@ -810,12 +974,7 @@ function toolInputByCallId(session, callId) {
   if (session === undefined || callId === undefined) return {}
   const event = sessionLastEvent(session, (e) => e.type === 'tool/call' && e.data?.callId === callId)
   if (event?.type !== 'tool/call') return {}
-  try {
-    const parsed = JSON.parse(event.data.arguments)
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : {}
-  } catch {
-    return {}
-  }
+  return parseArguments(event.data.arguments)
 }
 
 function permissionRequestPayload(ctx, agent, req) {
@@ -834,6 +993,112 @@ function permissionDeniedPayload(ctx, agent, session, ask) {
     tool_input: toolInputByCallId(session, ask.callId),
     tool_use_id: ask.callId ?? '',
     ...(ask.reason !== undefined ? { reason: ask.reason } : {}),
+  }
+}
+
+/**
+ * The previous step's tool calls paired with the model-facing result text, in
+ * CC `PostToolBatch.tool_calls` shape. DSH has no batch event; the step boundary
+ * after a batch is the closest equivalent, and the log already holds both halves
+ * keyed by turn/step/callId.
+ */
+function previousStepToolCalls(session, turn, step) {
+  if (session === undefined || typeof step !== 'number' || step <= 1) return []
+  const events = sessionEvents(session)
+  if (events === undefined) return []
+  const target = step - 1
+  const calls = []
+  const results = new Map()
+  // Walk backwards and stop at the first earlier turn/step: everything before
+  // that boundary is history this batch cannot contain.
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    const data = event?.data
+    if (typeof data?.turn !== 'number' || typeof data?.step !== 'number') continue
+    if (data.turn !== turn || data.step !== target) {
+      if (data.turn < turn || (data.turn === turn && data.step < target)) break
+      continue
+    }
+    if (event.type === 'tool/call') calls.push(data)
+    else if (event.type === 'tool/result' && typeof data.message?.toolCallId === 'string') {
+      results.set(data.message.toolCallId, data.message)
+    }
+  }
+  calls.reverse()
+  return calls.map((call) => ({
+    tool_name: call.name,
+    tool_input: parseArguments(call.arguments),
+    tool_use_id: call.callId,
+    tool_response: blocksToText(results.get(call.callId)?.content),
+  }))
+}
+
+function postToolBatchPayload(ctx, agent, toolCalls) {
+  return { ...base(ctx, agent, 'PostToolBatch'), tool_calls: toolCalls }
+}
+
+/**
+ * Diff one whole-list todo write against the previous snapshot. DSH entries
+ * carry no id, so `content` is the identity (the tool itself rejects duplicate
+ * content). `index` is the position in the NEW list — positional and stable only
+ * within one write, which is all the synthesized `task_id` claims.
+ */
+function todoDiff(previous, next) {
+  const before = new Map()
+  for (const item of previous) {
+    if (typeof item?.content === 'string') before.set(item.content, item)
+  }
+  const created = []
+  const completed = []
+  next.forEach((item, index) => {
+    if (typeof item?.content !== 'string') return
+    const prior = before.get(item.content)
+    if (prior === undefined) created.push({ item, index })
+    else if (prior.status !== 'completed' && item.status === 'completed') completed.push({ item, index })
+  })
+  return { created, completed }
+}
+
+function taskPayload(ctx, agent, event, entry) {
+  return {
+    ...base(ctx, agent, event),
+    task_id: `todo-${entry.index + 1}`,
+    task_subject: entry.item.content,
+  }
+}
+
+/**
+ * CC returns the hook's message as the tool error. Name the item too: DSH denies
+ * the whole list write, so without it the model cannot tell which entry tripped
+ * the hook.
+ */
+function taskBlockReason(event, entry, reason) {
+  const action = event === 'TaskCreated' ? 'creating' : 'completing'
+  const head = `${event} hook blocked ${action} "${entry.item.content}"`
+  return reason !== undefined && reason !== '' ? `${head}: ${reason}` : head
+}
+
+function userPromptExpansionPayload(ctx, agent, session, event) {
+  const data = event.data
+  return {
+    ...base(ctx, agent ?? { session }, 'UserPromptExpansion'),
+    expansion_type: 'slash_command',
+    command_name: data.name,
+    command_args: typeof data.args === 'string' ? data.args : '',
+    // DSH's only command source is { kind: 'user' }; CC's project/plugin split
+    // has no counterpart until commands are registered as first-class commands.
+    command_source: data.source?.kind ?? 'user',
+    // CC carries the expanded command body; DSH has no unified expansion text.
+    prompt: '',
+  }
+}
+
+function notificationPayload(ctx, agent, session, type, message) {
+  return {
+    ...base(ctx, agent ?? { session }, 'Notification'),
+    message,
+    title: 'Claude Code',
+    notification_type: type,
   }
 }
 
@@ -964,4 +1229,84 @@ function permissionDeniedRetry(merged) {
       && specific.hookEventName === 'PermissionDenied'
       && specific.retry === true
   })
+}
+
+/**
+ * Serve the human-facing stop notices to this plugin's own browser half.
+ *
+ * DSH has no plugin-only notice channel: the client-side `notice` effect is
+ * driven by command results, and the experimental `ui.toast` host op only
+ * writes a log line. A plugin that ships a client half can render the notice
+ * itself, so the notices live here until that half polls for them.
+ */
+const NOTICE_CHANNEL = '/cc-hooks'
+
+function registerNoticeRoute(ctx, noticesBySession) {
+  if (typeof ctx?.inject !== 'function') return
+  try {
+    ctx.inject(['webServer'], (scope) => {
+      try {
+        scope.effect(() => scope.webServer.register({
+          kind: 'prefix',
+          path: NOTICE_CHANNEL,
+          handler: createNoticeHandler(noticesBySession),
+        }), 'cc-hooks: notice route')
+      } catch (error) {
+        ctx.logger.warn(`cc-hooks: notice route unavailable: ${String(error)}`)
+      }
+    })
+  } catch (error) {
+    ctx.logger.warn(`cc-hooks: notice route unavailable: ${String(error)}`)
+  }
+}
+
+function createNoticeHandler(noticesBySession) {
+  return async function handle(request, response) {
+    try {
+      const url = new URL(request.url ?? '/', 'http://localhost')
+      if (url.pathname !== `${NOTICE_CHANNEL}/notices`) {
+        sendNoticeJson(response, 404, { ok: false, error: { code: 'cc-hooks/unknown-endpoint', message: `unknown endpoint ${url.pathname}` } })
+        return
+      }
+      if ((request.method ?? 'GET') !== 'GET') {
+        response.writeHead(405, { allow: 'GET' })
+        response.end()
+        return
+      }
+      if (!trustedNoticeCaller(request)) {
+        sendNoticeJson(response, 403, { ok: false, error: { code: 'cc-hooks/untrusted-origin', message: 'the request did not come from this plugin\'s browser half' } })
+        return
+      }
+      const sessionId = url.searchParams.get('sessionId') ?? ''
+      const notices = sessionId === '' ? [] : (noticesBySession.get(sessionId) ?? [])
+      sendNoticeJson(response, 200, { ok: true, value: { notices } })
+    } catch (error) {
+      try {
+        sendNoticeJson(response, 500, { ok: false, error: { code: 'cc-hooks/internal', message: error instanceof Error ? error.message : String(error) } })
+      } catch {
+        /* the response is already gone */
+      }
+    }
+  }
+}
+
+/** True for this plugin's own browser half (a cross-site fetch cannot set the header). */
+function trustedNoticeCaller(request) {
+  const headers = request.headers ?? {}
+  if (headers['x-cc-hooks'] !== '1') return false
+  const origin = headers.origin
+  if (typeof origin !== 'string' || origin === '' || origin === 'null') return true
+  try {
+    return typeof headers.host === 'string' && new URL(origin).host === headers.host
+  } catch {
+    return false
+  }
+}
+
+function sendNoticeJson(response, status, payload) {
+  response.writeHead(status, {
+    'cache-control': 'no-store',
+    'content-type': 'application/json; charset=utf-8',
+  })
+  response.end(JSON.stringify(payload))
 }

@@ -181,12 +181,15 @@ test('remaining20 fixture parses all 20 events with their matcher subjects', () 
   }
 })
 
-test('guard: the W1 events are wired; the other 15 stay parsed-but-inert', () => {
+test('guard: the W1/W2 events are wired; the other 10 stay parsed-but-inert', () => {
   // Keep this list in lockstep with the weekly batches: an event moves here
   // when its wiring lands, out of the inert half of the assertion.
-  const WIRED_IN_W1 = ['CwdChanged', 'StopFailure', 'InstructionsLoaded', 'PermissionRequest', 'PermissionDenied']
+  const WIRED = [
+    'CwdChanged', 'StopFailure', 'InstructionsLoaded', 'PermissionRequest', 'PermissionDenied',
+    'PostToolBatch', 'TaskCreated', 'TaskCompleted', 'UserPromptExpansion', 'Notification',
+  ]
   for (const event of Object.keys(REMAINING_20)) {
-    if (WIRED_IN_W1.includes(event)) {
+    if (WIRED.includes(event)) {
       assert.ok(WIRED_EVENTS.includes(event), `${event} should be wired`)
     } else {
       assert.ok(!WIRED_EVENTS.includes(event), `${event} unexpectedly wired; move it out of this guard`)

@@ -5,7 +5,7 @@
 // matcher validation, ${CLAUDE_*} substitution — extended to the FULL 31-event
 // official surface and ALL FIVE handler types (command / http / mcp_tool /
 // prompt / agent). Every known event parses into the config IR, while only the
-// 16 wired events are ever executed (the other 15 have no DSH extension point
+// 21 wired events are ever executed (the other 10 have no DSH extension point
 // yet, so their hooks sit parsed-but-inert, ready for a future wiring batch).
 // The wire-level types, matcher engine, runner and merge live in
 // @deepseek-ai/dsh-hook-protocol, which the host ships in the same version line.
@@ -36,20 +36,25 @@ export const BRIDGE_EVENTS = [
 
 /**
  * The events this plugin actually wires (the official 7 plus the batch-A
- * additions and the W1 direct mappings): PostToolUseFailure fires from
+ * additions and the W1/W2 mappings): PostToolUseFailure fires from
  * tools/post-execute on a failed tool, SessionEnd from agent/disposed,
  * PreCompact/PostCompact from the session compaction event stream,
  * PermissionRequest from the approval/request waterfall, PermissionDenied from
  * the approval/asked + approval/decided pair, CwdChanged from
- * working-directory/change, StopFailure from turn/end on an error, and
- * InstructionsLoaded from agent-instructions user messages. Everything else
- * stays parsed-but-inert.
+ * working-directory/change, StopFailure from turn/end on an error,
+ * InstructionsLoaded from agent-instructions user messages, PostToolBatch
+ * synthesized at the next agent/pre-step, TaskCreated/TaskCompleted from the
+ * todo_write whole-list diff, UserPromptExpansion from command/run, and
+ * Notification from approval/asked + subagent/end. Everything else stays
+ * parsed-but-inert.
  */
 export const WIRED_EVENTS = [
   ...BRIDGE_EVENTS,
   'PostToolUseFailure', 'SessionEnd', 'PreCompact', 'PostCompact',
   'PermissionRequest', 'PermissionDenied', 'CwdChanged', 'StopFailure',
   'InstructionsLoaded',
+  'PostToolBatch', 'TaskCreated', 'TaskCompleted', 'UserPromptExpansion',
+  'Notification',
 ]
 
 /** The five handler types of the official schema. */
