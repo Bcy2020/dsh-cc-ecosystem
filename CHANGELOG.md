@@ -9,6 +9,22 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.7.1 — 再接线 5 个合成事件(21/31)
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.7.1**,
+`cc-permissions` **0.8.1**,`dsh-cc-memory` **0.3.1**。
+
+`cc-hooks` 的事件覆盖从 16/31 提升到 21/31。这 5 个事件在宿主里没有一一对应的扩展点,按 CC 的事件语义合成:
+
+- **`PostToolBatch`** ← 在下一个 `agent/pre-step` 回看上一 step 的 `tool/call` + `tool/result`,合成 `tool_calls`。`block` 时本轮真的停下;停止原因同时给两边 —— 模型侧注入上下文,用户侧在对话列末尾画一行 12px 灰字提示(左侧 `HOOK` 标签)。宿主没有插件专用的用户提示通道,所以这一行由插件自带的浏览器半边绘制。
+- **`TaskCreated` / `TaskCompleted`** ← 拦截 `todo_write`,与上一份 `todo/write` 快照做 diff。拦截时拒绝整次写入,错误文本点名触发条目(DSH 的待办是整表替换且没有 id,连带拒绝是这个模型下的必然取舍)。
+- **`UserPromptExpansion`** ← `command/run`;观察态 + 追加 `additionalContext`,不可阻断。
+- **`Notification`** ← 只接 `permission_prompt`(审批弹窗出现前)与 `agent_completed`(子任务结束);`idle_prompt` 不接,否则每轮结束都会响。
+
+**修复**:Windows 上 pwsh 会把原生命令的 `exit 2` 变成 `exit 1`,导致所有依赖 exit 2 的 hook 静默不阻断。pwsh 方言下的命令现在包成 `$global:LASTEXITCODE = 0; <cmd>; exit $LASTEXITCODE`。
+
+**验证**:新增 W2 单测与浏览器半边测试;WSL 与 Windows 上 hook 子集各 40 条全通过;在 DSH `0.2.2-rc.1` 真机上验证了五个事件的触发、`PostToolBatch` 真停下(提示行截图确认,一次 block 只出一行)与 `TaskCreated` 的 exit 2 拦截。
+
 ## v0.7.0 — 再接线 5 个 Claude Code 事件(16/31)
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.7.0**,
