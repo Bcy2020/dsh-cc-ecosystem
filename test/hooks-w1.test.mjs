@@ -71,7 +71,7 @@ function recorder() {
 /** Apply the plugin, start a session, and wait for the config preload. */
 async function start({ home, project, run, agent }) {
   const ctx = makeCtx(run)
-  apply(ctx, { enableGlobal: false, homeDir: home })
+  apply(ctx, { enableGlobal: false, homeDir: home, shellDialect: 'posix' })
   await ctx._listeners['agent/session-start']({ agent, source: 'startup' })
   await sleep(300)
   return ctx

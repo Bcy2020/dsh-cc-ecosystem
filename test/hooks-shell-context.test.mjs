@@ -171,7 +171,7 @@ test('a leading quoted command gains the call operator on pwsh and keeps it off 
 
   const pwsh = await runSessionStart(hooksMap, { config: { shellDialect: 'pwsh' } })
   try {
-    assert.equal(pwsh.ctx._requests[0].command, `& ${quoted}`)
+    assert.equal(pwsh.ctx._requests[0].command, `$global:LASTEXITCODE = 0; & ${quoted}; exit $LASTEXITCODE`)
   } finally {
     rmSync(pwsh.project, { recursive: true, force: true })
     rmSync(pwsh.home, { recursive: true, force: true })
