@@ -23,14 +23,14 @@
 ## 规则
 
 - 只写事件名、版本号、退出码和必要的日志片段。**不要**贴 token、cookie、完整环境变量或完整项目路径（可以打码）。
-- 报告对应 `dsh-cc-hooks@0.7.0` 及以后的版本，并注明 DSH 版本与操作系统。
+- 报告对应 `dsh-cc-hooks@0.7.1` 及以后的版本，并注明 DSH 版本与操作系统。
 - **「没触发」也是有效结果**，按模板标注即可。下面这些事件当前没有接线，不触发属于预期，不是 bug。
 
-## 当前接线状态（16/31）
+## 当前接线状态（21/31）
 
-已接线：`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`PostToolUseFailure`、`Stop`、`SubagentStart`、`SubagentStop`、`SessionEnd`、`PreCompact`、`PostCompact`、`PermissionRequest`、`PermissionDenied`、`CwdChanged`、`StopFailure`、`InstructionsLoaded`。
+已接线：`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`PostToolUseFailure`、`Stop`、`SubagentStart`、`SubagentStop`、`SessionEnd`、`PreCompact`、`PostCompact`、`PermissionRequest`、`PermissionDenied`、`CwdChanged`、`StopFailure`、`InstructionsLoaded`、`PostToolBatch`、`TaskCreated`、`TaskCompleted`、`UserPromptExpansion`、`Notification`。
 
-未接线（配置了也不会执行，属预期）：`Setup`、`UserPromptExpansion`、`PostToolBatch`、`Notification`、`MessageDisplay`、`TaskCreated`、`TaskCompleted`、`TeammateIdle`、`ConfigChange`、`DirectoryAdded`、`FileChanged`、`WorktreeCreate`、`WorktreeRemove`、`Elicitation`、`ElicitationResult`。
+未接线（配置了也不会执行，属预期）：`Setup`、`MessageDisplay`、`TeammateIdle`、`ConfigChange`、`DirectoryAdded`、`FileChanged`、`WorktreeCreate`、`WorktreeRemove`、`Elicitation`、`ElicitationResult`。
 
 另有 `CwdChanged` 与 `StopFailure` 依赖宿主入口（`/cd`、模型路由失败），当前 DSH 上一般触发不了；未测到属正常。
 
@@ -54,3 +54,8 @@
 | `CwdChanged` | 0 | |
 | `StopFailure` | 0 | |
 | `InstructionsLoaded` | 0 | |
+| `PostToolBatch` | 0 | |
+| `TaskCreated` | 0 | |
+| `TaskCompleted` | 0 | |
+| `UserPromptExpansion` | 0 | |
+| `Notification` | 0 | |
