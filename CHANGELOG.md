@@ -9,6 +9,23 @@
 > DSH 仍停留在 `0.1.0-rc.7` ~ `0.1.1-rc.2` 的用户**请勿升级到 `v0.3.x`**,继续使用 `v0.1.x`
 > (cc-permissions `v0.2.x`);`v0.3.1` 起不再需要为新旧宿主维护两条版本线。
 
+## v0.7.2 — 接入 `FileChanged` / `ConfigChange`(23/31)
+
+**协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.7.2**,
+`cc-permissions` **0.8.2**,`dsh-cc-memory` **0.3.2**。
+
+`cc-hooks` 的事件覆盖从 21/31 提升到 23/31,接上两个由磁盘驱动的 CC 事件:
+
+- **`FileChanged`** ← 随插件带的文件监视(chokidar v4)。监视集 = hook 的 `matcher` 字面文件名(按 `|` 切分,相对路径锚 `cwd`)+ hook 通过 `watchPaths` 追加的路径;`change` / `add` / `unlink` 原样交给 hook,载荷里是绝对路径。
+- **`ConfigChange`** ← 监视三层 settings 与 `.claude/{skills,commands,agents,hooks}`,分别映射到 CC 的 `user_settings` / `project_settings` / `local_settings` / `skills`。**返回 `block`(exit 2)时,这次变更不只被 hook 拒绝,也不会进入运行中的会话** —— 权限、技能/命令、子代理目录都保持旧快照。
+- 监视器只在会话的 hooks 包含 `ConfigChange` / `FileChanged` / `CwdChanged` 时启动;配置项 `enableWatch: false` 可关闭。`hooks/hooks.json` 的改动会在打开的会话里即时重载配置,但不作为 `ConfigChange` 来源(它不是 CC 的来源)。
+
+**修复**:放行一次配置变更后,适配器会作废缓存、在下一次读取时重新读盘 —— 这期间落盘、随后**被拦下**的修改会被一起读进来,拦截等于失效。现在门激活期间适配器只服务"最后一次放行后预热"的快照,读路径不碰磁盘;放行时立刻预热,变更事件串行处理。
+
+**验证**:新增 W3 单测与跨包门测试;Windows 全量 462/463(唯一失败是既有的 jsdom 缺失),WSL 子集 18/18。在 DSH 真机上验证:文件增改删都带绝对路径;放行的设置修改即时生效;`project_settings` 的 `ConfigChange` 被拦后,磁盘上删掉的权限规则仍然生效、会话不中断。
+
+**注意**:pwsh 下写权限规则要用 `Bash(Remove-Item *)` —— CC 会先把 `rm` 规范化为 `Remove-Item`,`Bash(rm *)` 不匹配。
+
 ## v0.7.1 — 再接线 5 个合成事件(21/31)
 
 **协同发版**:`dsh-cc-loader` / `cc-skills` / `cc-agents` / `cc-hooks` / `cc-mcp` / `dsh-cc-ecosystem` **0.7.1**,

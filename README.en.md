@@ -16,7 +16,7 @@ English · [中文](README.md)
 
 <!-- versions:begin -->
 ```sh
-dsh plugin --profile <name> add dsh-cc-ecosystem@0.7.1
+dsh plugin --profile <name> add dsh-cc-ecosystem@0.7.2
 ```
 <!-- versions:end -->
 
