@@ -9,11 +9,12 @@
 //   - the watcher owner calls activateConfigGate(cwd) when it starts watching a
 //     session's cwd and deactivateConfigGate(cwd) when that session ends;
 //   - an adapter asks isConfigGateActive(cwd) before trusting its cache. While
-//     the gate is active, cache content is valid exactly when its recorded
-//     generation equals configGeneration(cwd);
-//   - after a change is ALLOWED, the watcher owner calls
-//     bumpConfigGeneration(cwd) once; a blocked or still-undecided change never
-//     bumps, so every adapter keeps serving its pre-change snapshot.
+//     the gate is active the adapter serves its last warmed snapshot and does
+//     NOT reload from disk: only the warmer below reads the files;
+//   - after a change is ALLOWED, the watcher owner bumps the generation once
+//     and immediately calls warmConfigGate(cwd), while the files still hold the
+//     allowed content. A blocked or still-undecided change never warms, so
+//     every adapter keeps serving its pre-change snapshot.
 //
 // While the gate is inactive (cc-hooks not installed, or a session without a
 // watcher) adapters keep their previous behavior — there is no hook that could
@@ -69,24 +70,16 @@ export function configGeneration(cwd) {
 }
 
 /**
- * Mark one change as allowed. Adapters see the new generation on their next
- * read and reload; a cwd with no adapter cache is unaffected.
- *
- * The timestamp matters as much as the counter: a reload that happens AFTER a
- * later blocked write would read that write back from disk. An adapter checks
- * the files' mtimes against configAllowedAt() and keeps its snapshot when the
- * files are newer than the last allowed change.
+ * Mark one change as allowed. Adapters do NOT reload on their own; the watcher
+ * owner calls warmConfigGate right after this, while the files still hold the
+ * allowed content. A read that happens while the gate is active therefore
+ * serves the last warmed snapshot and never consults the disk — which is what
+ * keeps a later blocked write from being read back.
  */
 export function bumpConfigGeneration(cwd) {
   const entry = entryFor(cwd)
   entry.generation += 1
-  entry.allowedAt = Date.now()
   return entry.generation
-}
-
-/** When the last allowed change happened (ms), or 0 before the first one. */
-export function configAllowedAt(cwd) {
-  return entryFor(cwd).allowedAt ?? 0
 }
 
 /**

@@ -76,10 +76,13 @@ export function apply(ctx, config = {}) {
 
   // With the gate inactive there is no change to guard, so never cache.
   const irCache = new Map()
-  async function loadCached(cwd) {
+  async function loadCached(cwd, { reload = false } = {}) {
     if (!isConfigGateActive(cwd)) return loadClaude({ ...loaderOpts(), cwd })
     const hit = irCache.get(cwd)
-    if (hit !== undefined && hit.generation === configGeneration(cwd)) return hit.ir
+    // While the gate is active the cache is refreshed only by the warmer, which
+    // the hook runner calls right after it allows a change; a normal read must
+    // not apply a change that was just blocked.
+    if (hit !== undefined && !reload) return hit.ir
     const ir = await loadClaude({ ...loaderOpts(), cwd })
     irCache.set(cwd, { ir, generation: configGeneration(cwd) })
     return ir
@@ -88,7 +91,7 @@ export function apply(ctx, config = {}) {
   // Preload the IR when cc-hooks starts watching a session, before a change it
   // might block is read from disk.
   ctx.effect(() => registerConfigWarmer(async (cwd) => {
-    if (isConfigGateActive(cwd)) await loadCached(cwd)
+    if (isConfigGateActive(cwd)) await loadCached(cwd, { reload: true })
   }))
 
   async function catalogFor(agent) {

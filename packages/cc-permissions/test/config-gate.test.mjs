@@ -26,13 +26,13 @@ function writeSettings(dir, settings) {
   writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify(settings, null, 2), 'utf8')
 }
 
-function gate(projectDir) {
+function gate(projectDir, command = 'rm -rf build') {
   const ctx = new Context()
   apply(ctx, Config({ homeDir: join(tmpdir(), 'cc-perm-gate-nohome') }))
   const call = () => ctx.waterfall('tools/pre-execute', {
     agent: { session: { header: { cwd: projectDir } } },
     name: 'bash',
-    arguments: { command: 'rm -rf build' },
+    arguments: { command },
   }, () => undefined)
   return call
 }
@@ -49,8 +49,11 @@ test('a blocked settings change keeps the permission snapshot; an allowed one re
     writeSettings(dir, { permissions: { deny: [] } })
     assert.equal((await call()).kind, 'deny', 'a blocked/pending change stays invisible')
 
+    // An allowed change bumps the generation and re-warms the adapter; only
+    // that refresh may read the disk.
     bumpConfigGeneration(dir)
-    assert.equal(await call(), undefined, 'an allowed change is picked up on the next call')
+    await warmConfigGate(dir)
+    assert.equal(await call(), undefined, 'an allowed change is picked up')
   } finally {
     deactivateConfigGate(dir)
     rmSync(dir, { recursive: true, force: true })
@@ -60,23 +63,25 @@ test('a blocked settings change keeps the permission snapshot; an allowed one re
 test('a blocked write that lands after an allowed change is never read back from disk', async () => {
   const dir = project({ permissions: { deny: ['Bash(rm *)'] } })
   try {
-    const call = gate(dir)
+    const rmCall = gate(dir)
+    const curlCall = gate(dir, 'curl https://example.com')
     activateConfigGate(dir)
     await warmConfigGate(dir)
-    assert.equal((await call()).kind, 'deny')
+    assert.equal((await rmCall()).kind, 'deny')
 
-    // Allowed change: the disk now allows everything, and the generation moves
-    // on. The adapter has NOT re-warmed yet (the watcher does that right after
-    // bumping, but a write can land inside that window).
+    // Allowed change: the disk now allows everything. The watcher bumps and
+    // re-warms right after the hook allows it.
     writeSettings(dir, { permissions: { deny: [] } })
     bumpConfigGeneration(dir)
+    await warmConfigGate(dir)
+    assert.equal(await rmCall(), undefined, 'the allowed change is live')
 
-    // A second change lands a moment later and is BLOCKED. It must not be
-    // reloaded (the mtime guard works at millisecond resolution).
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // A second change is written and then BLOCKED. The session must keep the
+    // allowed snapshot: rm stays allowed and the blocked curl rule never
+    // applies.
     writeSettings(dir, { permissions: { deny: ['Bash(curl *)'] } })
-    const result = await call()
-    assert.equal(result.kind, 'deny', 'a file newer than the last allowed change is not trusted')
+    assert.equal(await rmCall(), undefined, 'the blocked write does not reach the cache')
+    assert.equal(await curlCall(), undefined, 'nor does the rule it tried to add')
   } finally {
     deactivateConfigGate(dir)
     rmSync(dir, { recursive: true, force: true })
@@ -96,6 +101,7 @@ test('the session-start warm snapshot is what a later blocked change cannot alte
     assert.equal((await call()).kind, 'deny', 'a lazy first read must not see the blocked change')
 
     bumpConfigGeneration(dir)
+    await warmConfigGate(dir)
     assert.equal(await call(), undefined)
   } finally {
     deactivateConfigGate(dir)

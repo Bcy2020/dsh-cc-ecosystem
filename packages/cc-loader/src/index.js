@@ -57,6 +57,6 @@ export { injectedSource } from './message-source.js'
 // adapters follow it (see config-gate.js).
 export {
   activateConfigGate, deactivateConfigGate, isConfigGateActive,
-  configGeneration, bumpConfigGeneration, configAllowedAt,
+  configGeneration, bumpConfigGeneration,
   registerConfigWarmer, warmConfigGate,
 } from './config-gate.js'

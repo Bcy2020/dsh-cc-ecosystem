@@ -63,10 +63,13 @@ export function apply(ctx, config = {}) {
   const rulesCache = new Map()
 
   // With the gate inactive there is no change to guard, so never cache.
-  async function loadCached(cwd) {
+  async function loadCached(cwd, { reload = false } = {}) {
     if (!isConfigGateActive(cwd)) return loadClaude({ ...loaderOpts(), cwd })
     const hit = irCache.get(cwd)
-    if (hit !== undefined && hit.generation === configGeneration(cwd)) return hit.ir
+    // While the gate is active the cache is refreshed only by the warmer, which
+    // the hook runner calls right after it allows a change. Reading the disk on
+    // a normal call could apply a change that was just blocked.
+    if (hit !== undefined && !reload) return hit.ir
     const ir = await loadClaude({ ...loaderOpts(), cwd })
     irCache.set(cwd, { ir, generation: configGeneration(cwd) })
     return ir
@@ -92,7 +95,7 @@ export function apply(ctx, config = {}) {
   if (wantsIr || wantsRules) {
     ctx.effect(() => registerConfigWarmer(async (cwd) => {
       if (!isConfigGateActive(cwd)) return
-      if (wantsIr) await loadCached(cwd)
+      if (wantsIr) await loadCached(cwd, { reload: true })
       if (wantsRules) {
         const hit = rulesCache.get(cwd)
         if (hit === undefined || hit.generation !== configGeneration(cwd)) {
@@ -221,13 +224,15 @@ function registerRulesSection(ctx, config, loaderOpts, rulesCache) {
     if (alreadyInjected) return decision
     const cwd = agent.session.header?.cwd ?? process.cwd()
     const hit = rulesCache.get(cwd)
-    if (hit !== undefined && (!isConfigGateActive(cwd) || hit.generation === configGeneration(cwd))) {
+    // An existing entry is served as-is: while the gate is active only the
+    // warmer refreshes it (a blocked change leaves it alone), and with no gate
+    // there is nothing that could have blocked the change.
+    if (hit !== undefined) {
       return {
         kind: 'enter',
         messages: decision.messages.toSpliced(0, 0, hit.message),
       }
     }
-    if (hit !== undefined) rulesCache.delete(cwd)
     const message = await buildRulesMessage(cwd, loaderOpts, maxBytes, ctx)
     if (message === undefined) return decision
     rulesCache.set(cwd, { message, generation: isConfigGateActive(cwd) ? configGeneration(cwd) : undefined })

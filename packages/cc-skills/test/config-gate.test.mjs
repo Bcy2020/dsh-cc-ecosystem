@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply, Config } from '../src/index.js'
 import {
-  activateConfigGate, bumpConfigGeneration, deactivateConfigGate,
+  activateConfigGate, bumpConfigGeneration, deactivateConfigGate, warmConfigGate,
 } from '../../cc-loader/src/config-gate.js'
 
 async function fixture(text) {
@@ -63,11 +63,14 @@ test('blocked rules changes stay frozen; the next allowed change refreshes them'
       'a blocked/pending change must keep the old rules',
     )
 
+    // An allowed change bumps the generation and the watcher re-warms right
+    // after; that refresh is the only path that reads the new files.
     bumpConfigGeneration(cwd)
+    await warmConfigGate(cwd)
     assert.match(
       rulesText(await preStep(ctx, freshSession(cwd))),
       /Always run the type checker\./,
-      'an allowed change refreshes the rules on the next step',
+      'an allowed change refreshes the rules',
     )
   } finally {
     deactivateConfigGate(cwd)
