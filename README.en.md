@@ -79,7 +79,8 @@ In the `/cc-memory` panel:
 | `0.1.5-rc.2` or `0.2.0-rc.2` | **`v0.6.0` (current)** — one release line covers both host generations |
 | `0.1.0-rc.7` ~ `0.1.1-rc.2` | `v0.1.x` (no longer maintained) |
 
-- **Not every hook event is covered**: of Claude Code's 31 events, 11 have an extension point and actually fire; the rest are parsed but never run.
+- **Not every hook event is covered**: of Claude Code's 31 events, 23 have an extension point and actually fire; the rest are parsed but never run.
+- **Config/file watching**: `FileChanged` and `ConfigChange` are driven by the plugin's own file watcher. When a `ConfigChange` hook blocks a change, permissions, skills/commands, subagents and hook config all keep their previous snapshot.
 - **Some subagent fields have no effect**: subagents with `isolation: worktree` do not appear in the catalog; `hooks`, `mcpServers`, and `permissionMode` are ignored with a notice.
 - **The LSP bridge (mcpls) is not implemented yet.**
 - **Bash and PowerShell are separate tools**: `Bash(rm -rf *)` does not cover PowerShell; each has its own rules.

@@ -14,7 +14,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { loadClaude, parseFrontmatter, expandCcToolToDsh, pluginComponentName, sessionEventAt } from 'dsh-cc-loader'
+import { loadClaude, parseFrontmatter, expandCcToolToDsh, pluginComponentName, sessionEventAt, isConfigGateActive, configGeneration, registerConfigWarmer } from 'dsh-cc-loader'
 import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 
 export const name = 'cc-skills'
@@ -57,35 +57,68 @@ export function apply(ctx, config = {}) {
     globalClaudeDir: config.globalClaudeDir,
     pluginRoots: config.pluginRoots,
   })
+  const maxBytes = config.rulesMaxBytes ?? 65536
+  // Caches shared by the provider, the rules section and the warmer.
+  const irCache = new Map()
+  const rulesCache = new Map()
+
+  // With the gate inactive there is no change to guard, so never cache.
+  async function loadCached(cwd) {
+    if (!isConfigGateActive(cwd)) return loadClaude({ ...loaderOpts(), cwd })
+    const hit = irCache.get(cwd)
+    if (hit !== undefined && hit.generation === configGeneration(cwd)) return hit.ir
+    const ir = await loadClaude({ ...loaderOpts(), cwd })
+    irCache.set(cwd, { ir, generation: configGeneration(cwd) })
+    return ir
+  }
+
   ctx.logger.info('cc-skills: provider registered (project .claude + global ~/.claude)')
 
   if (config.enableSkills !== false) {
     ctx.skills.registerProvider((control) =>
-      new CcSkillsProvider(ctx, control, config, loaderOpts))
+      new CcSkillsProvider(ctx, control, config, loadCached))
   }
   if (config.enableRules !== false) {
-    registerRulesSection(ctx, config, loaderOpts)
+    registerRulesSection(ctx, config, loaderOpts, rulesCache)
   }
   if (config.enableToolScope !== false) {
     registerToolScope(ctx, config, loaderOpts)
+  }
+
+  // Preload caches when cc-hooks starts watching a session, before a change it
+  // might block is read from disk.
+  const wantsIr = config.enableSkills !== false
+  const wantsRules = config.enableRules !== false
+  if (wantsIr || wantsRules) {
+    ctx.effect(() => registerConfigWarmer(async (cwd) => {
+      if (!isConfigGateActive(cwd)) return
+      if (wantsIr) await loadCached(cwd)
+      if (wantsRules) {
+        const hit = rulesCache.get(cwd)
+        if (hit === undefined || hit.generation !== configGeneration(cwd)) {
+          const message = await buildRulesMessage(cwd, loaderOpts, maxBytes, ctx)
+          if (message !== undefined) rulesCache.set(cwd, { message, generation: configGeneration(cwd) })
+        }
+      }
+    }))
   }
 }
 
 // ─── skill provider ──────────────────────────────────────────────────────────
 
 class CcSkillsProvider {
-  constructor(ctx, control, config, loaderOpts) {
+  constructor(ctx, control, config, loadCached) {
     this.ctx = ctx
     this.name = 'cc-skills'
     this.config = config
-    this.loaderOpts = loaderOpts
+    this.loadCached = loadCached
     control.signal.addEventListener('abort', () => {}, { once: true })
   }
 
   async list(options) {
     const cwd = options?.cwd
     if (cwd === undefined || cwd === null) return []
-    const ir = await loadClaude({ ...this.loaderOpts(), cwd })
+    const ir = await this.loadCached(cwd)
     const out = []
     // Ranks follow POSITION: DSH breaks a name clash by lowest rank, and CC's
     // precedence IS the merge position (user first, then project near → far),
@@ -168,10 +201,10 @@ class CcSkillsProvider {
 
 // ─── rules section ───────────────────────────────────────────────────────────
 
-function registerRulesSection(ctx, config, loaderOpts) {
+function registerRulesSection(ctx, config, loaderOpts, rulesCache) {
   const maxBytes = config.rulesMaxBytes ?? 65536
-  // Cache built messages per session cwd — pre-step fires every step.
-  const cache = new Map()
+  // Built messages live in the shared rulesCache — pre-step fires every step,
+  // and entries carry the gate generation so a blocked change stays invisible.
   ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
     const decision = await next()
     if (decision.kind !== 'enter') return decision
@@ -187,17 +220,20 @@ function registerRulesSection(ctx, config, loaderOpts) {
       })
     if (alreadyInjected) return decision
     const cwd = agent.session.header?.cwd ?? process.cwd()
-    if (!cache.has(cwd)) {
-      const text = await buildRulesText(cwd, loaderOpts, maxBytes, ctx)
-      if (text.length === 0) return decision
-      cache.set(cwd, createUserMessage({
-        content: [{ type: 'text', text }],
-        source: { kind: 'cc-skills', form: 'rules' },
-      }))
+    const hit = rulesCache.get(cwd)
+    if (hit !== undefined && (!isConfigGateActive(cwd) || hit.generation === configGeneration(cwd))) {
+      return {
+        kind: 'enter',
+        messages: decision.messages.toSpliced(0, 0, hit.message),
+      }
     }
+    if (hit !== undefined) rulesCache.delete(cwd)
+    const message = await buildRulesMessage(cwd, loaderOpts, maxBytes, ctx)
+    if (message === undefined) return decision
+    rulesCache.set(cwd, { message, generation: isConfigGateActive(cwd) ? configGeneration(cwd) : undefined })
     return {
       kind: 'enter',
-      messages: decision.messages.toSpliced(0, 0, cache.get(cwd)),
+      messages: decision.messages.toSpliced(0, 0, message),
     }
   })
 }
@@ -228,6 +264,16 @@ As you answer the user's questions, you can use the following context:
 # claudeRules
 ${parts.join('\n')}
       </system-reminder>`
+}
+
+/** Build the rules user message, or undefined when there are no rules to inject. */
+async function buildRulesMessage(cwd, loaderOpts, maxBytes, ctx) {
+  const text = await buildRulesText(cwd, loaderOpts, maxBytes, ctx)
+  if (text.length === 0) return undefined
+  return createUserMessage({
+    content: [{ type: 'text', text }],
+    source: { kind: 'cc-skills', form: 'rules' },
+  })
 }
 
 // ─── skill tool-scope (allowed-tools / disallowed-tools) ─────────────────────

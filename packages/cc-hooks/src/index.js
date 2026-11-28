@@ -19,14 +19,15 @@
 // and a missing runtime capability (no tools/llm service, no subagent tool,
 // no model route) degrades to a warning + neutral outcome, never a crash.
 //
-// 21/31 events run (7 bridge-wired + PostToolUseFailure, SessionEnd,
+// 23/31 events run (7 bridge-wired + PostToolUseFailure, SessionEnd,
 // PreCompact, PostCompact + the W1 direct mappings PermissionRequest,
 // PermissionDenied, CwdChanged, StopFailure, InstructionsLoaded + the W2
 // compositions PostToolBatch, TaskCreated, TaskCompleted, UserPromptExpansion,
-// Notification); the other 10 have no DSH extension point yet, so their hooks
-// sit parsed-but-inert.
+// Notification + the W3 watcher events FileChanged, ConfigChange); the other 8
+// have no DSH extension point yet, so their hooks sit parsed-but-inert.
 
 import { homedir } from 'node:os'
+import { basename } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import {
@@ -51,7 +52,14 @@ import {
   runPromptHook,
 } from './executors.js'
 import { ccBucket, injectedSource, onSessionStart, sessionEvents, sessionLastEvent } from 'dsh-cc-loader'
+import {
+  activateConfigGate, bumpConfigGeneration, deactivateConfigGate, warmConfigGate,
+} from 'dsh-cc-loader'
 import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
+import {
+  configWatchEntries, createSessionWatcher, defaultCreateWatcher,
+  fileWatchEntries, normalizeWatchPaths,
+} from './watch.js'
 
 export const name = 'cc-hooks'
 // `shell` is required to run hooks; the rest are read opportunistically via
@@ -85,6 +93,9 @@ export const Config = z.object({
    *  `ShellExecutor` exposes no identity: a host that swapped the pwsh executor
    *  for bash (a shell-flip plugin) needs commands written for bash. */
   shellDialect: z.union([z.const('auto'), z.const('posix'), z.const('pwsh')]).default('auto'),
+  /** Watch settings and FileChanged paths for ConfigChange/FileChanged hooks.
+   *  Off also disables the cross-package config gate (no watcher, no blocking). */
+  enableWatch: z.boolean().default(true),
 })
 
 /**
@@ -101,6 +112,13 @@ const PLUGIN_SOURCE = injectedSource('cc-hooks')
 let handlerCounter = 0
 function nextHandlerId(point) {
   return `cc-hooks:${point}:${++handlerCounter}`
+}
+
+// Test seam: unit tests drive a fake emitter instead of real chokidar.
+let createWatcherImpl = defaultCreateWatcher
+/** @internal */
+export function __setWatcherFactory(factory) {
+  createWatcherImpl = factory ?? defaultCreateWatcher
 }
 
 /** The summary cap bounds a persisted event field — a positive integer or the slice misbehaves silently. */
@@ -183,7 +201,16 @@ export function apply(ctx, config = {}) {
   // through its paired end so stop hooks keep the session workspace after the
   // handle unregisters the agent.
   const subagentChildren = new Map()
-  ctx.effect(() => () => { cache.clear(); return detached.drain() }, 'cc-hooks: drain detached hook runs')
+  ctx.effect(() => () => {
+    for (const [sessionId, record] of watchersBySession) {
+      watchersBySession.delete(sessionId)
+      deactivateConfigGate(record.cwd)
+      void record.watcher.close()
+    }
+    pendingWatchPaths.clear()
+    cache.clear()
+    return detached.drain()
+  }, 'cc-hooks: drain detached hook runs')
 
   // Session → agent fallback for log-only points (StopFailure,
   // PermissionDenied) that receive a Session rather than an Agent. The live
@@ -475,6 +502,145 @@ export function apply(ctx, config = {}) {
     return undefined
   }
 
+  /**
+   * Disk-driven events: the per-session watcher turns file changes into
+   * ConfigChange (settings + component directories) and FileChanged (literal
+   * matcher filenames + hook-returned watchPaths). The gate in dsh-cc-loader
+   * lets a blocked ConfigChange keep every cached adapter on its pre-change
+   * snapshot: only an allowed change bumps the cwd's generation.
+   */
+  const watchersBySession = new Map()
+  const pendingWatchPaths = new Map()
+
+  function hookWatchPaths(merged) {
+    const paths = []
+    for (const parsed of rawHookObjects(merged)) {
+      const specific = parsed.hookSpecificOutput
+      if (specific === null || typeof specific !== 'object') continue
+      if (specific.hookEventName !== 'SessionStart'
+        && specific.hookEventName !== 'CwdChanged'
+        && specific.hookEventName !== 'FileChanged') continue
+      if (Array.isArray(specific.watchPaths)) paths.push(...specific.watchPaths)
+    }
+    return paths
+  }
+
+  function fileEntriesFor(record) {
+    return [...fileWatchEntries(record.cwd, record.config), ...record.dynamicWatchPaths]
+  }
+
+  function applyWatchPaths(record, merged) {
+    const paths = normalizeWatchPaths(hookWatchPaths(merged), record.cwd)
+    if (paths.length === 0) return
+    record.dynamicWatchPaths = paths
+    record.watcher.setFileEntries(fileEntriesFor(record))
+  }
+
+  async function startWatcher(agent) {
+    if (config.enableWatch === false) return
+    const session = agent?.session
+    const sessionId = session?.header?.id
+    const cwd = session?.header?.cwd
+    if (typeof sessionId !== 'string' || sessionId === '' || typeof cwd !== 'string') return
+    if (session?.header?.origin === 'subagent') return
+    if (watchersBySession.has(sessionId)) return
+    const parsed = await configFor(cwd)
+    const configWanted = (parsed.config.ConfigChange?.length ?? 0) > 0
+    // CC starts the FileChanged watcher only when CwdChanged or FileChanged
+    // hooks exist; those are also the events that can return watchPaths.
+    const filesWanted = (parsed.config.FileChanged?.length ?? 0) > 0
+      || (parsed.config.CwdChanged?.length ?? 0) > 0
+    if (!configWanted && !filesWanted) return
+    const record = {
+      agent,
+      cwd,
+      config: parsed.config,
+      dynamicWatchPaths: pendingWatchPaths.get(sessionId) ?? [],
+      watcher: undefined,
+      // ConfigChange events are judged one at a time: an allowed change must
+      // finish re-warming the adapter caches before the next event is judged.
+      changeQueue: Promise.resolve(),
+    }
+    pendingWatchPaths.delete(sessionId)
+    record.watcher = createSessionWatcher({
+      cwd,
+      homeDir,
+      globalClaudeDir: config.globalClaudeDir,
+      createWatcher: createWatcherImpl,
+      onHooksConfigChange: () => {
+        // The ecosystem's bare hooks/hooks.json is not a CC ConfigChange
+        // source, but this plugin must still honour an edit in the open
+        // session. No gate bump: no ConfigChange hook was consulted.
+        void reloadConfig(record, { bump: false })
+          .catch((error) => ctx.logger.warn(`cc-hooks: hook config reload failed: ${String(error)}`))
+      },
+      onConfigChange: (source, path) => {
+        record.changeQueue = record.changeQueue
+          .then(() => runConfigChange(record, source, path))
+          .catch(() => {})
+      },
+      onFileChanged: (path, event) => runFileChanged(record, path, event),
+      onError: (error) => ctx.logger.warn(`cc-hooks: file watcher error (${cwd}): ${String(error)}`),
+    })
+    if (configWanted) {
+      record.watcher.setConfigEntries(configWatchEntries(cwd, { homeDir, globalClaudeDir: config.globalClaudeDir }))
+      activateConfigGate(cwd)
+      // Snapshot every adapter's cache before a change can be blocked.
+      void warmConfigGate(cwd)
+    }
+    if (filesWanted) record.watcher.setFileEntries(fileEntriesFor(record))
+    watchersBySession.set(sessionId, record)
+  }
+
+  async function reloadConfig(record, { bump }) {
+    if (bump) bumpConfigGeneration(record.cwd)
+    cache.delete(record.cwd)
+    const parsed = await configFor(record.cwd)
+    record.config = parsed.config
+    record.watcher.setFileEntries(fileEntriesFor(record))
+  }
+
+  async function runConfigChange(record, source, filePath) {
+    try {
+      const merged = await runPoint('ConfigChange', source, configChangePayload(ctx, record.agent, source, filePath), {
+        agent: record.agent, signal: detached.signal,
+      })
+      const blocked = merged.decision === 'deny' || merged.decision === 'block'
+      if (blocked) {
+        // CC force-allows policy_settings; this plugin never watches that
+        // source, so every source it reports is blockable.
+        ctx.logger.warn(`cc-hooks: ConfigChange hook blocked ${source} change to ${filePath}`)
+        return
+      }
+      bumpConfigGeneration(record.cwd)
+      // Invalidate-and-reload-later is not enough: the reload can happen after
+      // a later blocked write has landed, and would read that write back from
+      // disk. Re-warm every adapter NOW, while the files still hold the
+      // allowed content, then refresh this plugin's own hook config.
+      await warmConfigGate(record.cwd)
+      await reloadConfig(record, { bump: false })
+    } catch (error) {
+      ctx.logger.warn(`cc-hooks: ConfigChange hook failed: ${String(error)}`)
+    }
+  }
+
+  function runFileChanged(record, filePath, event) {
+    detached.track(runPoint('FileChanged', basename(filePath), fileChangedPayload(ctx, record.agent, filePath, event), {
+      agent: record.agent, signal: detached.signal,
+    }).then((merged) => {
+      applyWatchPaths(record, merged)
+    }).catch((error) => ctx.logger.warn(`cc-hooks: FileChanged hook failed: ${String(error)}`)))
+  }
+
+  function stopWatcher(sessionId) {
+    const record = watchersBySession.get(sessionId)
+    if (record === undefined) return
+    watchersBySession.delete(sessionId)
+    pendingWatchPaths.delete(sessionId)
+    deactivateConfigGate(record.cwd)
+    void record.watcher.close()
+  }
+
   ctx.logger.info('cc-hooks: per-session hooks registered (project .claude/hooks + ~/.claude + plugin dirs)')
 
   // SessionStart preloads the session config and runs SessionStart hooks
@@ -494,10 +660,20 @@ export function apply(ctx, config = {}) {
     if (cwd !== undefined) {
       void configFor(cwd).catch((error) => ctx.logger.warn(`cc-hooks: preload failed for ${cwd}: ${String(error)}`))
     }
+    void startWatcher(agent).catch((error) => ctx.logger.warn(`cc-hooks: watcher start failed: ${String(error)}`))
     detached.track(runPoint('SessionStart', source, sessionStartPayload(ctx, agent, source), { agent, signal: detached.signal })
       .then((merged) => {
         const context = contextFrom(merged)
         if (context) agent.inject(context)
+        // SessionStart can return watchPaths. The watcher is created from the
+        // config preload, so it may not exist yet; keep them for startWatcher.
+        const record = sessionId !== undefined ? watchersBySession.get(sessionId) : undefined
+        if (record !== undefined) {
+          applyWatchPaths(record, merged)
+        } else if (sessionId !== undefined) {
+          const paths = normalizeWatchPaths(hookWatchPaths(merged), agent?.session?.header?.cwd ?? process.cwd())
+          if (paths.length > 0) pendingWatchPaths.set(sessionId, paths)
+        }
       })
       .catch((error) => ctx.logger.warn(`cc-hooks: SessionStart hook failed: ${String(error)}`)))
   })
@@ -661,7 +837,10 @@ export function apply(ctx, config = {}) {
     // The session may already be detached by the time an agent is disposed;
     // read it the same total way as everywhere else.
     const sessionId = agent?.session?.header?.id
-    if (sessionId !== undefined) knownAgents.delete(sessionId)
+    if (sessionId !== undefined) {
+      knownAgents.delete(sessionId)
+      stopWatcher(sessionId)
+    }
     if (agent?.session?.header?.origin === 'subagent') return
     detached.track(runPoint('SessionEnd', 'other', sessionEndPayload(ctx, agent), { agent, signal: detached.signal }))
   })
@@ -725,7 +904,26 @@ export function apply(ctx, config = {}) {
         const previous = lastCwdBySession.get(session) ?? session.header?.cwd
         lastCwdBySession.set(session, next)
         if (previous === next) return
-        detached.track(runPoint('CwdChanged', '', cwdChangedPayload(ctx, session, previous, next), { session, signal: detached.signal }))
+        detached.track(runPoint('CwdChanged', '', cwdChangedPayload(ctx, session, previous, next), { session, signal: detached.signal })
+          .then(async (merged) => {
+            const record = watchersBySession.get(session?.header?.id)
+            if (record === undefined) return
+            const parsed = await configFor(next)
+            const configWanted = (parsed.config.ConfigChange?.length ?? 0) > 0
+            deactivateConfigGate(record.cwd)
+            record.cwd = next
+            record.config = parsed.config
+            record.dynamicWatchPaths = normalizeWatchPaths(hookWatchPaths(merged), next)
+            record.watcher.setCwd(next, {
+              configEntries: configWanted ? configWatchEntries(next, { homeDir, globalClaudeDir: config.globalClaudeDir }) : [],
+              fileEntries: fileEntriesFor(record),
+            })
+            if (configWanted) {
+              activateConfigGate(next)
+              void warmConfigGate(next)
+            }
+          })
+          .catch((error) => ctx.logger.warn(`cc-hooks: CwdChanged watcher update failed: ${String(error)}`)))
         return
       }
       case 'turn/end': {
@@ -994,6 +1192,20 @@ function permissionDeniedPayload(ctx, agent, session, ask) {
     tool_use_id: ask.callId ?? '',
     ...(ask.reason !== undefined ? { reason: ask.reason } : {}),
   }
+}
+
+/** ConfigChange's matcher subject is the configuration source. */
+function configChangePayload(ctx, agent, source, filePath) {
+  return {
+    ...base(ctx, agent, 'ConfigChange'),
+    source,
+    ...(typeof filePath === 'string' ? { file_path: filePath } : {}),
+  }
+}
+
+/** FileChanged reports the absolute path and chokidar's change|add|unlink. */
+function fileChangedPayload(ctx, agent, filePath, event) {
+  return { ...base(ctx, agent, 'FileChanged'), file_path: filePath, event }
 }
 
 /**

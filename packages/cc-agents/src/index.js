@@ -21,7 +21,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { injectedSource, loadClaude, onSessionStart, parseFrontmatter, expandCcToolToDsh, pluginComponentName } from 'dsh-cc-loader'
+import { injectedSource, loadClaude, onSessionStart, parseFrontmatter, expandCcToolToDsh, pluginComponentName, isConfigGateActive, configGeneration, registerConfigWarmer } from 'dsh-cc-loader'
 import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 
 export const name = 'cc-agents'
@@ -70,19 +70,48 @@ export function apply(ctx, config = {}) {
   ctx.logger.info(`cc-agents: registered (delegation via ${config.provider}, catalog injection ${config.injectCatalog !== false ? 'on' : 'off'})`)
 
   // Catalog state: cached per session id so session-start and tool calls
-  // share one discovery per session. Invalidation = new session id.
-  const sessionCache = new Map() // sessionId → { agents, skills }
+  // share one discovery per session. Invalidation = new session id, unless a
+  // config gate is active — then a generation mismatch also invalidates.
+  const sessionCache = new Map() // sessionId → { agents, skills, cwd, generation }
+
+  // With the gate inactive there is no change to guard, so never cache.
+  const irCache = new Map()
+  async function loadCached(cwd) {
+    if (!isConfigGateActive(cwd)) return loadClaude({ ...loaderOpts(), cwd })
+    const hit = irCache.get(cwd)
+    if (hit !== undefined && hit.generation === configGeneration(cwd)) return hit.ir
+    const ir = await loadClaude({ ...loaderOpts(), cwd })
+    irCache.set(cwd, { ir, generation: configGeneration(cwd) })
+    return ir
+  }
+
+  // Preload the IR when cc-hooks starts watching a session, before a change it
+  // might block is read from disk.
+  ctx.effect(() => registerConfigWarmer(async (cwd) => {
+    if (isConfigGateActive(cwd)) await loadCached(cwd)
+  }))
 
   async function catalogFor(agent) {
     const sessionId = agent?.session?.header?.id
     if (sessionId !== undefined) {
       const hit = sessionCache.get(sessionId)
-      if (hit !== undefined) return hit
+      if (hit !== undefined) {
+        if (isConfigGateActive(hit.cwd) && hit.generation !== configGeneration(hit.cwd)) {
+          sessionCache.delete(sessionId)
+        } else {
+          return hit
+        }
+      }
     }
     const cwd = agent?.session?.header?.cwd ?? process.cwd()
-    const ir = await loadClaude({ ...loaderOpts(), cwd })
+    const ir = await loadCached(cwd)
     for (const w of ir.warnings) ctx.logger.warn(`cc-agents: ${w}`)
-    const entry = { agents: mergePluginAgents(ir), skills: ir.components.skills, cwd }
+    const entry = {
+      agents: mergePluginAgents(ir),
+      skills: ir.components.skills,
+      cwd,
+      generation: isConfigGateActive(cwd) ? configGeneration(cwd) : undefined,
+    }
     if (sessionId !== undefined) sessionCache.set(sessionId, entry)
     return entry
   }

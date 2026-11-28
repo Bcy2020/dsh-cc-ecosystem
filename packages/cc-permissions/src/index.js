@@ -13,7 +13,7 @@
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
-import { loadPermissions, evaluateCall, sessionEvents, discoverProjectMcp, projectMcpApproval } from 'dsh-cc-loader'
+import { loadPermissions, evaluateCall, sessionEvents, discoverProjectMcp, projectMcpApproval, isConfigGateActive, configGeneration, configAllowedAt, registerConfigWarmer } from 'dsh-cc-loader'
 import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 import { decideApproval } from './approval.js'
 
@@ -46,6 +46,27 @@ function mcpServerOfTool(toolName) {
   return sep < 0 ? undefined : rest.slice(0, sep)
 }
 
+/**
+ * True when any settings source was written after `since` (ms), or cannot be
+ * read. Used to tell an allowed change apart from a blocked one that exists on
+ * disk: the latter must never reach the cache.
+ */
+async function writtenAfter(sources, since) {
+  if (!(since > 0)) return false
+  for (const src of sources ?? []) {
+    try {
+      const s = await stat(src.path)
+      // mtimeMs carries sub-millisecond precision; allowedAt is a whole
+      // millisecond. Truncate so a write in the same millisecond as the
+      // allowed change still counts as part of it.
+      if (Math.floor(s.mtimeMs) > since) return true
+    } catch {
+      return true
+    }
+  }
+  return false
+}
+
 export function apply(ctx, config = {}) {
   announce(ctx, describeSelf(import.meta.url))
   if (config.enabled === false) return
@@ -53,21 +74,32 @@ export function apply(ctx, config = {}) {
   const homeDir = config.homeDir ?? homedir()
   // Per-cwd cache of loaded permissions; invalidated when any settings file's
   // mtime changes, so edits take effect immediately (fresher than CC's
-  // load-at-startup semantics).
+  // load-at-startup semantics). With a config gate active, mtime watching is
+  // replaced by generation matching (a blocked change must stay invisible).
   const cache = new Map()
 
   async function permissionsFor(cwd) {
     const hit = cache.get(cwd)
     if (hit !== undefined) {
-      let changed = false
-      for (const src of hit.sources) {
-        try {
-          const s = await stat(src.path)
-          if (s.mtimeMs !== src.mtimeMs) { changed = true; break }
-        } catch { changed = true; break }
+      if (isConfigGateActive(cwd)) {
+        if (hit.generation === configGeneration(cwd)) return hit
+        // The generation moved on, but a reload now would also read any change
+        // that was written AFTER the last allowed one and then blocked. Keep
+        // the snapshot until the files themselves are no newer than that
+        // allowed change (the hook runner re-warms adapters on every allow).
+        if (await writtenAfter(hit.sources, configAllowedAt(cwd))) return hit
+        cache.delete(cwd)
+      } else {
+        let changed = false
+        for (const src of hit.sources) {
+          try {
+            const s = await stat(src.path)
+            if (s.mtimeMs !== src.mtimeMs) { changed = true; break }
+          } catch { changed = true; break }
+        }
+        if (!changed) return hit
+        cache.delete(cwd)
       }
-      if (!changed) return hit
-      cache.delete(cwd)
     }
     const loaded = await loadPermissions({ cwd, homeDir })
     // Project-scope MCP servers are gated (see the pre-execute listener). Their
@@ -83,6 +115,7 @@ export function apply(ctx, config = {}) {
       ...loaded,
       sources,
       projectMcpServers: new Set(projectMcp.servers.map((s) => s.serverName)),
+      generation: isConfigGateActive(cwd) ? configGeneration(cwd) : undefined,
       at: Date.now(),
     }
     cache.set(cwd, entry)
@@ -263,4 +296,7 @@ export function apply(ctx, config = {}) {
   }
 
   ctx.effect(() => () => cache.clear())
+  // Load the snapshot at session start, before a ConfigChange hook can block
+  // a change; a cache built later would read the new files from disk.
+  ctx.effect(() => registerConfigWarmer((cwd) => permissionsFor(cwd)))
 }

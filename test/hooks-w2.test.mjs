@@ -110,6 +110,7 @@ async function start({ home, run, agent, agents, shellDialect }) {
   const ctx = makeCtx(run, agents)
   apply(ctx, {
     enableGlobal: false,
+    enableWatch: false,
     homeDir: home,
     // Tests pin the dialect: `auto` probes through the shell mock, which would
     // record an extra run and skew the payload assertions.

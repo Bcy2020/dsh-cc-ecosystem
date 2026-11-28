@@ -36,7 +36,7 @@ export const BRIDGE_EVENTS = [
 
 /**
  * The events this plugin actually wires (the official 7 plus the batch-A
- * additions and the W1/W2 mappings): PostToolUseFailure fires from
+ * additions and the W1/W2/W3 mappings): PostToolUseFailure fires from
  * tools/post-execute on a failed tool, SessionEnd from agent/disposed,
  * PreCompact/PostCompact from the session compaction event stream,
  * PermissionRequest from the approval/request waterfall, PermissionDenied from
@@ -44,8 +44,9 @@ export const BRIDGE_EVENTS = [
  * working-directory/change, StopFailure from turn/end on an error,
  * InstructionsLoaded from agent-instructions user messages, PostToolBatch
  * synthesized at the next agent/pre-step, TaskCreated/TaskCompleted from the
- * todo_write whole-list diff, UserPromptExpansion from command/run, and
- * Notification from approval/asked + subagent/end. Everything else stays
+ * todo_write whole-list diff, UserPromptExpansion from command/run,
+ * Notification from approval/asked + subagent/end, ConfigChange/FileChanged
+ * from the plugin's own chokidar watchers. Everything else stays
  * parsed-but-inert.
  */
 export const WIRED_EVENTS = [
@@ -55,6 +56,7 @@ export const WIRED_EVENTS = [
   'InstructionsLoaded',
   'PostToolBatch', 'TaskCreated', 'TaskCompleted', 'UserPromptExpansion',
   'Notification',
+  'FileChanged', 'ConfigChange',
 ]
 
 /** The five handler types of the official schema. */
