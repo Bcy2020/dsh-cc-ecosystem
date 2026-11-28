@@ -53,3 +53,10 @@ export { sessionEvents, sessionEventAt, sessionLastEvent } from './session-compa
 export { onSessionStart } from './session-start-compat.js'
 // What `source` an injected message must carry for the host's v4 admission gate.
 export { injectedSource } from './message-source.js'
+// Shared allowed-change gate: the ConfigChange hook runner bumps it, cached
+// adapters follow it (see config-gate.js).
+export {
+  activateConfigGate, deactivateConfigGate, isConfigGateActive,
+  configGeneration, bumpConfigGeneration,
+  registerConfigWarmer, warmConfigGate,
+} from './config-gate.js'

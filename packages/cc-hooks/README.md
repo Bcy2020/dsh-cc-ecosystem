@@ -18,7 +18,7 @@ process-level, read once at load; its own source carries the
 |---|---|
 | 包名 | `dsh-cc-hooks` |
 | 依赖 | `@deepseek-ai/dsh-hook-protocol`(官方共享协议层,peer)、`dsh-cc-loader`(file: 共享解析层) |
-| 事件 | 21/31:官方 7 映射集 + 批次 A 扩展 + W1 直映射 + W2 合成 —— SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / PostToolUseFailure / Stop / SubagentStart / SubagentStop / SessionEnd / PreCompact / PostCompact / PermissionRequest / PermissionDenied / CwdChanged / StopFailure / InstructionsLoaded / PostToolBatch / TaskCreated / TaskCompleted / UserPromptExpansion / Notification |
+| 事件 | 23/31:官方 7 映射集 + 批次 A 扩展 + W1 直映射 + W2 合成 + W3 监视 —— SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / PostToolUseFailure / Stop / SubagentStart / SubagentStop / SessionEnd / PreCompact / PostCompact / PermissionRequest / PermissionDenied / CwdChanged / StopFailure / InstructionsLoaded / PostToolBatch / TaskCreated / TaskCompleted / UserPromptExpansion / Notification / FileChanged / ConfigChange |
 | 动作类型 | 全部 5 类执行:`command` / `http` / `mcp_tool` / `prompt` / `agent`(批次 B);事件×类型落在官方支持矩阵之外 → 解析即跳过 + 警告,能力缺失(tools/llm 服务、subagent 工具、模型路由)→ 警告 + 非阻断,永不崩溃 |
 | 宿主 DSH | 0.1.0-rc.x(协议 peer 钉 `0.1.0-rc.6`,npm 无 rc.5 发布) |
 
@@ -105,6 +105,7 @@ dsh plugin --profile <name> add dsh-cc-loader@0.7.1 dsh-cc-hooks@0.7.1
 | `projectDir` | 会话 cwd | `CLAUDE_PROJECT_DIR` 覆盖值 |
 | `sandboxMode` | `''` | hook 的沙箱模式。空 = 跟随会话;`danger-full-access` = 不设防(Claude Code 行为) |
 | `shellDialect` | `auto` | `ctx.shell` 说的是哪种语言:`auto` 在 Windows 上探一次 / `posix` / `pwsh` |
+| `enableWatch` | `true` | 是否监视配置与 `FileChanged` 路径。关闭后 `ConfigChange`/`FileChanged` 不触发,跨包配置拦截也一并关闭 |
 
 ## hooks.json 格式速查(CC 官方格式,直传 JSON)
 
@@ -172,6 +173,19 @@ JSON 里是普通 key,解析通过但暂不执行(parsed-but-inert)。
 | `SessionEnd` | `agent/disposed`(仅顶层会话) | 结束原因 | DSH 无原因概念 → 恒报 `other`;observe-only |
 | `PreCompact` | session 事件流 `compaction/start` | `manual` / `auto` | 手动 `/compact` 带 `sourceCommandId` → manual,自动压缩 → auto;observe-only(压缩已落盘,block 无法兑现) |
 | `PostCompact` | session 事件流 `compaction/end` | `manual` / `auto` | observe-only |
+
+### W3:磁盘事件(`FileChanged` / `ConfigChange`)
+
+插件自带 chokidar 监视器(与 CC 相同的 `awaitWriteFinish 500/200`),每个顶层会话一个:
+
+| 事件 | 监视什么 | 行为 |
+|---|---|---|
+| `FileChanged` | matcher 里的字面文件名(`a\|b`,相对会话 cwd)+ hook 返回的 `watchPaths` | 变化时发 `file_path`(绝对路径)+ `event`(`change` / `add` / `unlink`);observe-only,返回的 `watchPaths` 动态并入 |
+| `ConfigChange` | 三层 settings + `.claude/{skills,commands,agents,hooks}` | `source` 为 `user_settings` / `project_settings` / `local_settings` / `skills`;可阻断 |
+
+- **阻断是跨包的**:拦截生效时,权限、hook 配置、技能/命令、子代理目录都停在会话开始时的快照(见 `dsh-cc-loader` 的配置门)。会话启动会先预热各包缓存,避免「变更被拦后才第一次读配置」。
+- 生态特有的 `.claude/hooks/hooks.json` 变化只刷新本插件的 hooks 配置,不发 `ConfigChange`(CC 没有这个文件)。
+- `rules/` 不在监视范围(与 CC 的 ConfigChange 来源一致;规则文件变化由 `InstructionsLoaded` 覆盖)。
 
 ### `if` 字段执行过滤
 

@@ -89,6 +89,7 @@ async function runSessionStart(hooksMap, { config = {}, policy, ready = (ctx) =>
   const ctx = makeCtx(policy)
   apply(ctx, {
     enableGlobal: false,
+    enableWatch: false,
     homeDir: home,
     shellDialect: 'posix', // keeps the probe off this path unless a test says otherwise
     ...config,

@@ -13,7 +13,7 @@
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
-import { loadPermissions, evaluateCall, sessionEvents, discoverProjectMcp, projectMcpApproval } from 'dsh-cc-loader'
+import { loadPermissions, evaluateCall, sessionEvents, discoverProjectMcp, projectMcpApproval, isConfigGateActive, configGeneration, registerConfigWarmer } from 'dsh-cc-loader'
 import { announce, describeSelf } from 'dsh-cc-loader/telemetry'
 import { decideApproval } from './approval.js'
 
@@ -53,12 +53,17 @@ export function apply(ctx, config = {}) {
   const homeDir = config.homeDir ?? homedir()
   // Per-cwd cache of loaded permissions; invalidated when any settings file's
   // mtime changes, so edits take effect immediately (fresher than CC's
-  // load-at-startup semantics).
+  // load-at-startup semantics). With a config gate active, mtime watching is
+  // replaced by generation matching (a blocked change must stay invisible).
   const cache = new Map()
 
-  async function permissionsFor(cwd) {
+  async function permissionsFor(cwd, { reload = false } = {}) {
     const hit = cache.get(cwd)
-    if (hit !== undefined) {
+    if (hit !== undefined && !reload) {
+      // While the gate is active, only an allowed change refreshes this cache:
+      // the hook runner bumps the generation and calls the warmer right after.
+      // Reading the disk here could apply a change that was just blocked.
+      if (isConfigGateActive(cwd)) return hit
       let changed = false
       for (const src of hit.sources) {
         try {
@@ -83,6 +88,7 @@ export function apply(ctx, config = {}) {
       ...loaded,
       sources,
       projectMcpServers: new Set(projectMcp.servers.map((s) => s.serverName)),
+      generation: isConfigGateActive(cwd) ? configGeneration(cwd) : undefined,
       at: Date.now(),
     }
     cache.set(cwd, entry)
@@ -263,4 +269,7 @@ export function apply(ctx, config = {}) {
   }
 
   ctx.effect(() => () => cache.clear())
+  // Load the snapshot at session start, before a ConfigChange hook can block
+  // a change; a cache built later would read the new files from disk.
+  ctx.effect(() => registerConfigWarmer((cwd) => permissionsFor(cwd, { reload: true })))
 }

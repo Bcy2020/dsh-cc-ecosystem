@@ -163,7 +163,7 @@ test('batch-A wiring: if filtering on PreToolUse runs only matching hooks', asyn
       runs.push(req)
       return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } }
     }
-    apply(ctx, { enableGlobal: false, homeDir: home, shellDialect: 'posix' })
+    apply(ctx, { enableGlobal: false, enableWatch: false, homeDir: home, shellDialect: 'posix' })
 
     const agent = makeAgent(project)
     await ctx._listeners['agent/session-start']({ agent, source: 'startup' })
@@ -209,7 +209,7 @@ test('batch-A wiring: PostToolUseFailure fires on a failed tool, PostToolUse on 
         ? '{"hookSpecificOutput":{"hookEventName":"PostToolUseFailure","additionalContext":"fail note"}}'
         : '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"ok note"}}' }, stderr: { text: '' } }
     }
-    apply(ctx, { enableGlobal: false, homeDir: home, shellDialect: 'posix' })
+    apply(ctx, { enableGlobal: false, enableWatch: false, homeDir: home, shellDialect: 'posix' })
 
     const agent = makeAgent(project)
     await ctx._listeners['agent/session-start']({ agent, source: 'startup' })
@@ -258,7 +258,7 @@ test('batch-A wiring: SessionEnd fires on top-level disposal only', async () => 
     const runs = []
     const ctx = makeCtx()
     ctx.shell.run = async (req) => { runs.push(req); return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } } }
-    apply(ctx, { enableGlobal: false, homeDir: home, shellDialect: 'posix' })
+    apply(ctx, { enableGlobal: false, enableWatch: false, homeDir: home, shellDialect: 'posix' })
 
     const top = makeAgent(project, 'top-1')
     await ctx._listeners['agent/session-start']({ agent: top, source: 'startup' })
@@ -294,7 +294,7 @@ test('batch-A wiring: PreCompact/PostCompact fire from the session event stream 
     const runs = []
     const ctx = makeCtx()
     ctx.shell.run = async (req) => { runs.push(req); return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } } }
-    apply(ctx, { enableGlobal: false, homeDir: home, shellDialect: 'posix' })
+    apply(ctx, { enableGlobal: false, enableWatch: false, homeDir: home, shellDialect: 'posix' })
 
     const agent = makeAgent(project)
     await ctx._listeners['agent/session-start']({ agent, source: 'startup' })
@@ -322,14 +322,14 @@ test('batch-A wiring: PreCompact/PostCompact fire from the session event stream 
   }
 })
 
-test('batch-A: WIRED_EVENTS covers the 21 wired events', () => {
+test('batch-A: WIRED_EVENTS covers the 23 wired events', () => {
   assert.deepEqual(WIRED_EVENTS, [
     'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop',
     'SubagentStart', 'SubagentStop', 'PostToolUseFailure', 'SessionEnd',
     'PreCompact', 'PostCompact', 'PermissionRequest', 'PermissionDenied',
     'CwdChanged', 'StopFailure', 'InstructionsLoaded',
     'PostToolBatch', 'TaskCreated', 'TaskCompleted', 'UserPromptExpansion',
-    'Notification',
+    'Notification', 'FileChanged', 'ConfigChange',
   ])
 })
 
@@ -345,7 +345,7 @@ test('demo hooks.json: 19 hooks across 11 events — all five handler types pars
   const { config, skipped } = parseHooksConfig(raw)
 
   // 12 events carry hooks: the 11 events wired when the demo was written, plus
-  // Notification, whose http hook is parsed-but-inert (no DSH extension point).
+  // Notification (wired in W2).
   const events = Object.keys(config)
   assert.equal(events.length, 12)
   const DEMO_WIRED = [
@@ -405,7 +405,7 @@ test('regression: SessionStart hooks still run when the agent has no session yet
       runs.push(req)
       return { exitCode: 0, stdout: { text: '' }, stderr: { text: '' } }
     }
-    apply(ctx, { enableGlobal: false, homeDir: home, shellDialect: 'posix' })
+    apply(ctx, { enableGlobal: false, enableWatch: false, homeDir: home, shellDialect: 'posix' })
 
     // The payload carries no cwd, so discovery falls back to process.cwd();
     // stand in the project to make that fallback land on real hooks.
